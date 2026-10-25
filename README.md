@@ -13,7 +13,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/jlarosa02/AI2
 git -C data/raw/myntra_mirror sparse-checkout set styles
 ```
 
-Frozen manifests for the real experiment should come from the official Kaggle download.
+Frozen manifests for the real experiment should come from the official Kaggle download. For that, copy `.env.example` to `.env` (git ignores it) and paste a token from https://www.kaggle.com/settings/api.
 
 ## Data audit
 
@@ -22,3 +22,11 @@ uv run python -I src/audit.py data/raw/myntra_mirror/styles reports/data_audit.m
 ```
 
 Writes label coverage by category, label support across the seen / held-out split, a category-majority baseline, how often the text names the label, and colour-variant family statistics.
+
+## Review app
+
+```
+uv run streamlit run app/review.py
+```
+
+Browse products by split, category, label and whether the description agrees with the catalog label. Label phrases are highlighted in the description, colour variants are listed together, and an expander shows the label-noise estimate per category. Photos appear once the Kaggle images are under `data/raw/kaggle/`.
