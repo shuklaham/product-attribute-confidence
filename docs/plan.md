@@ -1,6 +1,6 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 2 in progress. An independent review of all work so far led to data v1 (2026-10-25): duplicate listings now share a family, redaction is stricter, and garbled text is removed. The metrics, calibration fits, inference and evaluation code are written and tested; the GPU runs are next. Last updated 2026-10-25.
+Status: Milestone 2 runs done (2026-10-26). The base model scores 95.5% (neckline) and 93.6% (sleeve length) on redacted dev, above the 90% stop line, while its stated confidence carries no information (0.95 on nearly every answer) and its letter probabilities do. How to proceed is under decision; see `docs/log.md`. Last updated 2026-10-26.
 
 ## 1. Question
 
@@ -54,6 +54,8 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-25 | The author's 18 of 20 spot-check agreement is reported as a confirmation rate, an upper bound: the app showed Claude's verdict and pre-selected it. The app now hides Claude's verdict until the reviewer saves, and blind agreement is measured on unreviewed items | Agreement measured with the answer on screen is anchored |
 | 2026-10-25 | The primary comparison uses the Brier score with invalid outputs counted as loss 1, pooled over both attributes. M2's Platt map is refitted in every bootstrap draw on a resample of the calibration families | That Brier variant cannot be improved by invalid outputs. Refitting includes the uncertainty of fitting the map, which treating it as fixed would leave out |
 | 2026-10-25 | Before the Platt fit, stated confidence is clipped to [0.005, 0.995], so a stated 1.0 reads as half a step above 0.99 | The clip had been 0.0001, which set where a cluster of stated 1.0s sits on the logit axis and moved the fit; it is now fixed in advance, with a sensitivity check in the Milestone 3 report |
+| 2026-10-26 | Run inference pods without a network volume, in whichever data center has A40 stock; copy results back and delete the pod | EU-SE-1 had A40 stock but offers no network volumes, and CA-MTL-1, which does, had little stock. The data is 530 MB and setup takes about 5 minutes, so a volume is not worth tying every pod to one data center. Storage for training is decided in Milestone 3 |
+| 2026-10-26 | Freeze the image budget: one photo per product, at most 512 px on the long side | Measured 167–194 image tokens per photo on dev; the longest prompt with its photo is 765 tokens |
 
 ## 3. Data
 

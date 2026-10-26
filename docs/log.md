@@ -180,3 +180,36 @@ One entry per working session: what ran, what it cost, what it showed, and what 
 - Add Runpod credit (author), then the GPU part of Milestone 2 on the v1 examples.
 - A blind review of the remaining hand-check items in the app (author), to measure agreement with Claude independently.
 - Before Milestone 4: decide the RL data mix, since the training cap changes the label mix that RL calibrates against.
+
+## 2026-10-26: Milestone 2, base model on dev
+
+**Ran**
+- One A40 pod (Runpod Secure Cloud, EU-SE-1, CUDA 13.2 host) with vLLM 0.32.0, torch 2.13.0 and transformers 5.19.0 from `uv.lock`, at commit `2931c4d`.
+- A 16-item smoke test, then three runs on the v1 dev split:
+  - the base model with photo and text, in both text conditions (3,546 examples);
+  - text only, on redacted text (1,773);
+  - photo only (1,773).
+- The pod had no network volume, because EU-SE-1 offers none and CA-MTL-1 had little A40 stock. Results were copied back, and the pod was deleted.
+- Tables: `reports/m0_dev.md`.
+
+**Cost:** about 16 minutes of pod time at $0.59/hr, about $0.16. Runpod's billing records had not posted when checked.
+
+**Findings**
+- **Accuracy is above the plan's 90% saturation line on redacted dev.** Neckline is 95.5% (95% interval 93.6–97.2%) and sleeve length 93.6% (91.9–95.2%). With full text they are 97.2% and 95.9%.
+- **The photo carries the answer.** Photo only scores 94.8% and 93.4%. Text only on redacted text scores 76.2% for neckline, against a category guess of 70.8%, and 73.5% for sleeve length, below the category guess of 85.5%.
+- **No invalid outputs** in any run.
+- **The stated confidence carries no information; the letter probabilities do.**
+  - The model states 0.95 on 99–100% of its answers with the photo, so the stated confidence cannot rank them: AUROC 0.50–0.52.
+  - ECE is low (0.002–0.022) only because accuracy happens to sit near 0.95.
+  - The probability it gives its chosen letter ranks answers well: AUROC 0.92–0.98.
+  - From full to redacted text, stated confidence drops by 0.000 while accuracy drops 1.7 points for neckline and 2.3 for sleeve.
+- **The errors are concentrated, not spread.**
+  - Neckline: 98.9% on T-shirts, 72.2% on Tops. Scoop neck was right 3 of 8 times and Mandarin collar 0 of 7, with round versus scoop the main confusion.
+  - Sleeve length: 99.4% on T-shirts, 96.4% on Tops, 78.0% on Shirts. 54 of 212 long-sleeve items were called three-quarter, and all 8 inspected were long-sleeve shirts photographed with the sleeves rolled up. That is the roll-up convention the hand check found, in photos whose text does not say so.
+- **Rough held-out proxy:** reweighting dev accuracy per label to the held-out label mix gives about 80% for neckline (Boat neck has no dev items) and 93% for sleeve length. No test item was used.
+- **Image budget:** a photo costs 167–194 tokens (median 194), and the longest prompt with its photo is 765 tokens. The budget is frozen at photos of at most 512 px on the long side.
+- **Text-only redaction check:**
+  - The confident text-only answers that beat the category guess rely on styling. For polo collars it is "buttoned chest placket" (all 34 such neckline items). For sleeveless it is how women's tops are described (cowl or ruffled necks).
+  - Two statements survived: "vest top" and a lone "three quarter" with no "sleeves" after it. They are candidates for word list v1.1.
+
+**Decision needed:** the plan's stop rule (base model above 90% on redacted dev) fired. Whether to continue with the current task, add a harder attribute or use a smaller model is open; see the next entry.

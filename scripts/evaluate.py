@@ -18,7 +18,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-from pac.evaluation import category_guess, summarize
+from pac.evaluation import category_guess, evidence_sensitivity, summarize
 
 
 def load(path: Path) -> list[dict]:
@@ -94,6 +94,21 @@ def main() -> None:
     for key, s in summaries.items():
         lines.append("| " + " | ".join(key) + f" | {num(s['letter_ece'])} | {num(s['letter_auroc'])} | "
                      f"{num(s['letter_aurc'])} | {s['letter_missing']} |")
+    by_condition = defaultdict(dict)
+    for key, rows in groups.items():
+        by_condition[key[:5]][key[5]] = rows
+    sensitivity = {key: evidence_sensitivity(c["full"], c["redacted"])
+                   for key, c in sorted(by_condition.items()) if {"full", "redacted"} <= c.keys()}
+    if sensitivity:
+        lines += ["", "## Evidence sensitivity (full minus redacted text)", "",
+                  "Both drops use the items valid in both conditions; the invalid rates are over all items.", "",
+                  ("| Run | Split | Subset | Mode | Attribute | Items | Valid in both | Confidence drop "
+                   "| Accuracy drop | Invalid, full | Invalid, redacted |"),
+                  "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|"]
+        for key, s in sensitivity.items():
+            lines.append("| " + " | ".join(key) + f" | {s['n']:,} | {s['valid_in_both']:,} | "
+                         f"{num(s['confidence_drop'])} | {pct(s['accuracy_drop'])} | {pct(s['invalid_full'])} | "
+                         f"{pct(s['invalid_redacted'])} |")
     lines += ["", "## Invalid outputs by reason", ""]
     for key, s in summaries.items():
         reasons = ", ".join(f"{k} {v}" for k, v in sorted(s["errors"].items(), key=lambda kv: -kv[1])) or "none"
