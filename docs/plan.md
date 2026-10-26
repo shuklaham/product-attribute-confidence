@@ -1,6 +1,6 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 1 (data foundation) complete. The hand check is done: Claude reviewed 100 contradictions, and the author agreed on 18 of 20 in a spot check. Milestone 2 is next. Last updated 2026-10-25.
+Status: Milestone 1 (data foundation) complete. Milestone 2 in progress: the metrics, calibration fits, inference and evaluation code are written and tested; the GPU runs are next. Last updated 2026-10-25.
 
 ## 1. Question
 
@@ -39,6 +39,9 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-25 | Draw the hand-check sample of 100 contradictions from training-side splits only, and freeze it (`annotations/hand_check_queue_v0.csv`) | Inspecting test items could influence decisions about them. The sample is fixed so later matcher changes do not reshuffle it |
 | 2026-10-25 | Claude reviews the full sample (verdicts marked `reviewer = claude`); the author confirms them in the review app, and the agreement rate is reported | A model judging necklines has unknown error, so its verdicts are labeled and checked against a person's |
 | 2026-10-25 | Fix four phrase patterns found by the hand check: "three quarter" must lead to "sleeve"; drop "spread collar", "armholes" and "mid-arm"; count "deep round neck" as scoop | 5 of the 100 sampled contradictions were matcher misreads; 95 were genuine |
+| 2026-10-25 | Metrics count invalid outputs as wrong, never auto-fill them, and rank them last in the risk–coverage area; tied confidences are averaged over a random order | Otherwise an invalid output on a hard item could improve the area. Stated confidences pile up on a few values, so any fixed order within ties would be arbitrary |
+| 2026-10-25 | The auto-fill threshold is the lowest one whose accepted items on the threshold half of the calibration split have at most 5% observed error, with no correction for choosing among many thresholds | The seen test shows the resulting overshoot without any shift, so the held-out minus seen difference isolates the shift. A rule based on an upper confidence bound would guarantee the in-distribution error but cut coverage sharply on about 400 items |
+| 2026-10-25 | Read the log-probabilities of all 12 letter tokens at the position where the model writes its choice (vLLM `logprob_token_ids`); pin the model revision (`ebb281ec`) and vLLM 0.32.0 in `uv.lock` | Every offered letter gets an exact probability, with no top-k cutoff. The tokenizer makes the letter a token of its own in every output layout checked |
 | 2026-10-25 | Exclude products whose text describes roll-up sleeves from the sleeve-length task, in every split (`exclude_if` in the ontology) | Their length depends on a convention, since they are usually photographed rolled. They were 14 of 43 sleeve contradictions in the hand check. The rule removes 590 sleeve labels; it catches 8 of those 14, and roll-ups visible only in the photo stay as label noise |
 
 ## 3. Data
@@ -49,12 +52,12 @@ The practical use is selective auto-fill: fill a product attribute only when the
 
 | Attribute | Kept labels | Dropped labels |
 |---|---|---|
-| Neckline | Round 3,304 / 705 · Polo collar 955 / 0 · V-neck 237 / 336 · Mandarin collar 45 / 156 · Scoop 66 / 2 · Boat 31 / 33 · Cowl 30 / 2 · Square 15 / 0 · Shirt collar 21 / 0 | Strap and shoulder styles: Shoulder straps, Strapless, Off-shoulder, One shoulder, Halter. Rare or not shared: Tie-up, High neck, Mock neck, Keyhole, Henley, Hood |
-| Sleeve length | Short 5,028 / 483 · Long 1,701 / 321 · Sleeveless 466 / 354 · Three-quarter 109 / 291 | None. "No Sleeves" merges into Sleeveless |
+| Neckline | Round 3,304 / 707 · Polo collar 959 / 0 · V-neck 237 / 336 · Scoop 69 / 2 · Mandarin collar 45 / 156 · Boat 31 / 33 · Cowl 30 / 2 · Shirt collar 16 / 0 · Square 15 / 0 | Strap and shoulder styles: Shoulder straps, Strapless, Off-shoulder, One shoulder, Halter. Rare or not shared: Tie-up, High neck, Mock neck, Keyhole, Henley, Hood |
+| Sleeve length | Short 4,977 / 472 · Long 1,410 / 321 · Sleeveless 463 / 351 · Three-quarter 93 / 280 | None. "No Sleeves" merges into Sleeveless |
 
 Every kept label gets a one-line definition, which is shown to the model with the options. Square neck and Shirt collar have fewer than 30 training examples, so they stay as options but are never scored.
 
-The label mix shifts along with the categories. Mandarin collar is 1% of training necklines but 13% of held-out ones, and three-quarter sleeves are 1.5% of training sleeves but 20% of held-out ones. Calibration under this shift therefore has to cope with changed label frequencies as well as unfamiliar products.
+The label mix shifts along with the categories. Mandarin collar is 1% of training necklines but 13% of held-out ones, and three-quarter sleeves are 1.3% of training sleeves but 20% of held-out ones. Calibration under this shift therefore has to cope with changed label frequencies as well as unfamiliar products.
 
 **Splits.** Assigned by colour-variant family, so all variants of a product share a split.
 
@@ -158,6 +161,7 @@ All of these outcomes are reportable: RL wins under shift; the cheap fixes match
 
 - **GPU:** Runpod Secure Cloud A40 48 GB, $0.59/hr (catalog read 2026-10-18), in CA-MTL-1.
 - **Storage:** a 30 GB high-performance network volume in the same data center, $0.14/GB-month.
+- **Software on the pod:** `uv sync --group gpu` installs vLLM 0.32.0 with torch 2.13.0. Those torch wheels use CUDA 13, so the pod's host needs NVIDIA driver 580 or newer, and pods are created with that CUDA filter.
 - **Estimate:** 70–100 GPU-hours, about $55–75 including storage. Spending past $100 requires a review.
 - **Tracking:** spend is read from Runpod billing at each milestone and recorded in `docs/log.md`.
 - **Local machine:** data preparation, tests and analysis.

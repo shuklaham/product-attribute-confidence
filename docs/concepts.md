@@ -100,7 +100,7 @@ Code: `src/pac/review.py`, `scripts/review_queue.py`, `app/review.py`.
 ## 8. Category shift has two parts
 
 - **New kinds of products.** A kurta does not look like a T-shirt.
-- **Changed label frequencies.** Mandarin collar is 1% of training necklines but 13% of held-out ones. Three-quarter sleeves go from 1.5% to 20%.
+- **Changed label frequencies.** Mandarin collar is 1% of training necklines but 13% of held-out ones. Three-quarter sleeves go from 1.3% to 20%.
 
 Calibration cares about the second part because a confidence map fitted on training-category data carries the training base rates. When the frequency of an answer changes, the same stated 0.9 can correspond to a different actual hit rate. Per-label reliability results separate the two effects.
 
@@ -108,3 +108,49 @@ Calibration cares about the second part because a confidence map fitted on train
 
 - **Fingerprinted manifests.** `manifests/v0` stores product IDs, splits and label decisions, with a fingerprint of the source files and the hash of the label set. `scripts/build_examples.py` refuses to run if either has changed, so results never silently mix data versions.
 - **Strict output parsing.** Invalid output counts as wrong and is never repaired, so a model cannot look better by producing answers that a lenient parser quietly fixes. Code: `src/pac/output.py`.
+- **One prompt path.** Evaluation builds prompts with the model's own chat template through its Hugging Face processor, the path training uses, so both see identical prompt strings. Each run records a hash of every prompt, the model revision, the package versions and the git commit. Code: `scripts/predict.py`.
+
+## 10. Measuring confidence
+
+Each metric answers a different question, and a method can win on one while losing on another.
+
+| Metric | Question | Detail |
+|---|---|---|
+| Accuracy | How often is the answer right? | Pooled, and averaged over category–attribute groups so T-shirts do not dominate |
+| Brier score | How far is the confidence from the outcome? | Mixes calibration and discrimination; the score M4 is trained on |
+| ECE | Does stated confidence match the hit rate? | 10 equal-width bins; the count-weighted gap between confidence and accuracy |
+| AUROC | Are right answers more confident than wrong ones? | Ranking only: 0.5 is chance, 1 is perfect |
+| Risk–coverage area | If the most confident items are filled first, how many errors pile up? | The mean error rate over every fill level; lower is better |
+| Coverage at the threshold | What share is filled at the 5% error target? | The threshold is picked on the calibration split, then frozen |
+
+**Why calibration alone is not enough.** A model that states its average accuracy for every item has an ECE of zero, but it cannot tell easy items from hard ones (AUROC 0.5), so it is useless for auto-fill.
+
+**What the Platt map can and cannot change.** With a > 0 the map is increasing, so it keeps the order of confidences. M2 then has exactly M1's AUROC, risk–coverage curve and auto-fill coverage: the same items clear the threshold, and only the numbers attached to them change. M2 can improve only Brier and ECE. If M4 fills more than M2 at the same error, RL must have changed which items the model is confident about.
+
+**Two edge cases.**
+- Invalid outputs count as wrong, are never auto-filled, and rank last in the risk–coverage area. So an invalid output on a hard item can never improve a score. Brier is reported both on valid outputs and with each invalid output as a loss of 1.
+- Stated confidences pile up on a few values such as 0.9 and 0.95; CalibSFT reports the same. A threshold cannot split a tie, so the curve has one point per distinct value, and the area is averaged over a random order within each tie.
+
+**The threshold.**
+- Rule: the lowest threshold at which the accepted items on the threshold half of the calibration split (410 neckline and 559 sleeve items) have at most 5% errors. The lowest qualifying threshold fills the most.
+- Picking the best of many thresholds on a few hundred items tends to land on one whose true error is a little above 5%. The seen test shows that overshoot without any shift, so the difference between the held-out and seen results measures the shift itself.
+
+**Fitting the cheap fixes.** Both are fitted on the map-fitting half of the calibration split, then frozen.
+- Platt map: q′ = sigmoid(a · logit(q) + b), with a and b chosen to minimize cross-entropy by Newton's method. a stays at or above 0, so the map never reverses the order. If the best fit would need a < 0, meaning higher stated confidence goes with lower accuracy, the map becomes the constant base rate.
+- Temperature: the answer-letter probabilities become softmax(log-probabilities / t), with t chosen to minimize the negative log-likelihood of the correct letters by golden-section search. A t above 1 softens overconfident probabilities. The chosen letter never changes, so accuracy is unchanged.
+
+**Intervals.** Differences between methods come from a paired bootstrap over product families. Each resample draws families with replacement, keeps every row of a drawn family together, and scores both methods on the same draw. Colour variants are near-duplicates, so resampling single items would overstate the evidence and make the intervals too narrow.
+
+Code: `src/pac/metrics.py`, `src/pac/calibration.py`. Tests: `tests/test_metrics.py`, `tests/test_calibration.py`.
+
+## 11. Reading the answer-letter probability
+
+M2-logit needs the probability the model gives each option letter, not just the letter it writes.
+
+- The model writes `{"choice": "B", ...}`. The Qwen tokenizer makes the option letter a token of its own right after `"choice": "`. That holds in every layout checked: spaced, compact, fenced in a code block, and spread over several lines.
+- At that position, vLLM returns the log-probability of all 12 letter tokens (`logprob_token_ids`), not just the top few, so no offered letter is ever missing.
+- The values are read before any sampling adjustment (vLLM's raw mode), so decoding settings cannot change them.
+- The probabilities are renormalized over the letters actually offered: 9 for neckline, 4 for sleeve length. The chosen letter's share is the confidence, before and after temperature scaling.
+- The same strict parse decides validity for both sources of confidence, so M1, M2 and M2-logit are always scored on the same answers.
+
+Code: `src/pac/inference.py`, `src/pac/evaluation.py`, `scripts/predict.py`. Tests: `tests/test_inference.py`.

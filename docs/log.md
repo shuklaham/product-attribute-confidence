@@ -63,3 +63,26 @@ One entry per working session: what ran, what it cost, what it showed, and what 
 
 **Next**
 - Milestone 2.
+
+## 2026-10-25: Milestone 2, local part
+
+**Ran**
+- Wrote the metrics, calibration, inference and evaluation modules, with tests; 101 pass.
+- Wrote `scripts/predict.py` (vLLM, on the GPU pod) and `scripts/evaluate.py` (metric tables). A smoke test with stand-in modules for vLLM, transformers and torch ran both end to end on 20 dev items.
+- Checked the Qwen3-VL tokenizer and chat template at the pinned model revision (`ebb281ec`).
+
+**Cost:** no GPU used.
+
+**Findings**
+- In every output layout checked, the option letter is a single token right after `"choice": "`, so letter probabilities can be read at one position.
+- vLLM 0.32 can return log-probabilities for a fixed list of token IDs at each position. That gives every offered letter, with no top-k cutoff.
+- The model's chat template adds no system prompt. Its generation config defaults to sampling (temperature 0.7, top-p 0.8). vLLM applies those defaults only when no sampling parameters are passed, and the scripts always pass greedy settings.
+- vLLM 0.32.0 pins torch 2.13.0, whose wheels need CUDA 13, so the pod's host needs NVIDIA driver 580 or newer.
+- The plan's label table predated the hand-check fixes and the roll-up exclusion. It now matches `manifests/v0`; for example, three-quarter sleeves are 1.3% of training sleeves, not 1.5%.
+
+**Changed**
+- Plan: decision log rows for how metrics treat invalid outputs and ties, the threshold rule, and reading letter probabilities with pinned versions; corrected label table.
+- Dependencies: `numpy>=2.0` instead of `>=2.5.4`, because vLLM's numba needs numpy below 2.5. A `gpu` dependency group pins vLLM 0.32.0 for Linux.
+
+**Next**
+- GPU part of Milestone 2: pod and volume, upload examples and photos, a 16-item smoke run, M0 on dev in both conditions, and the text-only redaction check.
