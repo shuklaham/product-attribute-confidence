@@ -56,6 +56,9 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-25 | Before the Platt fit, stated confidence is clipped to [0.005, 0.995], so a stated 1.0 reads as half a step above 0.99 | The clip had been 0.0001, which set where a cluster of stated 1.0s sits on the logit axis and moved the fit; it is now fixed in advance, with a sensitivity check in the Milestone 3 report |
 | 2026-10-26 | Run inference pods without a network volume, in whichever data center has A40 stock; copy results back and delete the pod | EU-SE-1 had A40 stock but offers no network volumes, and CA-MTL-1, which does, had little stock. The data is 530 MB and setup takes about 5 minutes, so a volume is not worth tying every pod to one data center. Storage for training is decided in Milestone 3 |
 | 2026-10-26 | Freeze the image budget: one photo per product, at most 512 px on the long side | Measured 167–194 image tokens per photo on dev; the longest prompt with its photo is 765 tokens |
+| 2026-10-26 | Continue with both attributes and the held-out primary comparison, although the base model scores above the 90% stop line on redacted dev (author's decision) | The difficulty is concentrated rather than absent: Tops score 72% on neckline, scoop necks and Mandarin collars are mostly missed, and long-sleeve shirts photographed rolled up are called three-quarter. Reweighted to the held-out label mix, neckline accuracy would be about 80%. The study's phenomenon is clear: stated confidence is 0.95 on nearly every answer (AUROC 0.50) while the letter probabilities rank answers well (AUROC 0.92–0.98). Results are reported by category so T-shirts cannot hide the hard slices |
+| 2026-10-26 | GRPO trains only on training items where the model's sampled answers are neither all right nor all wrong; M3 and M4 use the same pool | A group whose 8 answers are all right, or all wrong, gives every sample the same correctness reward and no learning signal. With T-shirts near 99%, an unfiltered pool would be mostly such groups |
+| 2026-10-26 | Keep word list v1. "Vest" and a lone "three quarter", which the model-based check flagged, are not added | In train and dev, "vest" appears in 22 redacted sleeve items and only 9 are sleeveless; a lone "three quarter" mostly describes trousers (1 of 5 is three-quarter sleeves). They are correlates, not statements |
 
 ## 3. Data
 
@@ -148,6 +151,7 @@ Two more comparators are reported separately:
 
 **GRPO.**
 - 8 samples per prompt, temperature 1.0, at most 32 completion tokens, about 500 steps of 8 prompts.
+- Prompts: training items where M1's sampled answers are neither all right nor all wrong, measured once by sampling M1 before RL; the same pool for both arms.
 - Invalid output gets a reward of −1.1 in both arms.
 - M3 and M4 share every setting except the reward: starting checkpoint, data order, seeds, steps, KL coefficient and advantage normalization.
 - Logged per run: correctness and calibration terms separately, confidence histograms, the share of groups where all 8 rewards are equal (no learning signal), KL, gradient norms and throughput.

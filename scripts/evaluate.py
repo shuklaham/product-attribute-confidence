@@ -94,6 +94,16 @@ def main() -> None:
     for key, s in summaries.items():
         lines.append("| " + " | ".join(key) + f" | {num(s['letter_ece'])} | {num(s['letter_auroc'])} | "
                      f"{num(s['letter_aurc'])} | {s['letter_missing']} |")
+    lines += ["", "## Accuracy by category", "",
+              "Pooled accuracy is dominated by T-shirts, so each category is shown on its own.", "",
+              head + " Category | n | Accuracy |", rule + "---|---:|---:|"]
+    for key, rows in sorted(groups.items()):
+        by_category = defaultdict(list)
+        for r in rows:
+            by_category[r["category"]].append(r["correct"])
+        for category, hits in sorted(by_category.items(), key=lambda kv: -len(kv[1])):
+            lines.append("| " + " | ".join(key) + f" | {category} | {len(hits):,} | {pct(sum(hits) / len(hits))} |")
+
     by_condition = defaultdict(dict)
     for key, rows in groups.items():
         by_condition[key[:5]][key[5]] = rows

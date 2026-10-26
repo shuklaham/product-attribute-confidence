@@ -43,6 +43,33 @@
 | m0_dev_text_only | dev | clean | text_only | neckline | redacted | 0.229 | 0.740 | 0.131 | 0 |
 | m0_dev_text_only | dev | clean | text_only | sleeve_length | redacted | 0.239 | 0.734 | 0.132 | 0 |
 
+## Accuracy by category
+
+Pooled accuracy is dominated by T-shirts, so each category is shown on its own.
+
+| Run | Split | Subset | Mode | Attribute | Text | Category | n | Accuracy |
+|---|---|---|---|---|---|---|---:|---:|
+| m0_dev | dev | clean | photo_text | neckline | full | Tshirts | 620 | 99.0% |
+| m0_dev | dev | clean | photo_text | neckline | full | Tops | 90 | 84.4% |
+| m0_dev | dev | clean | photo_text | neckline | redacted | Tshirts | 620 | 98.9% |
+| m0_dev | dev | clean | photo_text | neckline | redacted | Tops | 90 | 72.2% |
+| m0_dev | dev | clean | photo_text | sleeve_length | full | Tshirts | 634 | 99.8% |
+| m0_dev | dev | clean | photo_text | sleeve_length | full | Shirts | 264 | 85.6% |
+| m0_dev | dev | clean | photo_text | sleeve_length | full | Tops | 165 | 97.0% |
+| m0_dev | dev | clean | photo_text | sleeve_length | redacted | Tshirts | 634 | 99.4% |
+| m0_dev | dev | clean | photo_text | sleeve_length | redacted | Shirts | 264 | 78.0% |
+| m0_dev | dev | clean | photo_text | sleeve_length | redacted | Tops | 165 | 96.4% |
+| m0_dev_photo_only | dev | clean | photo_only | neckline | redacted | Tshirts | 620 | 98.7% |
+| m0_dev_photo_only | dev | clean | photo_only | neckline | redacted | Tops | 90 | 67.8% |
+| m0_dev_photo_only | dev | clean | photo_only | sleeve_length | redacted | Tshirts | 634 | 99.5% |
+| m0_dev_photo_only | dev | clean | photo_only | sleeve_length | redacted | Shirts | 264 | 76.5% |
+| m0_dev_photo_only | dev | clean | photo_only | sleeve_length | redacted | Tops | 165 | 97.0% |
+| m0_dev_text_only | dev | clean | text_only | neckline | redacted | Tshirts | 620 | 78.4% |
+| m0_dev_text_only | dev | clean | text_only | neckline | redacted | Tops | 90 | 61.1% |
+| m0_dev_text_only | dev | clean | text_only | sleeve_length | redacted | Tshirts | 634 | 81.2% |
+| m0_dev_text_only | dev | clean | text_only | sleeve_length | redacted | Shirts | 264 | 74.2% |
+| m0_dev_text_only | dev | clean | text_only | sleeve_length | redacted | Tops | 165 | 42.4% |
+
 ## Evidence sensitivity (full minus redacted text)
 
 Both drops use the items valid in both conditions; the invalid rates are over all items.

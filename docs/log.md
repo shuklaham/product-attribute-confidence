@@ -212,4 +212,8 @@ One entry per working session: what ran, what it cost, what it showed, and what 
   - The confident text-only answers that beat the category guess rely on styling. For polo collars it is "buttoned chest placket" (all 34 such neckline items). For sleeveless it is how women's tops are described (cowl or ruffled necks).
   - Two statements survived: "vest top" and a lone "three quarter" with no "sleeves" after it. They are candidates for word list v1.1.
 
-**Decision needed:** the plan's stop rule (base model above 90% on redacted dev) fired. Whether to continue with the current task, add a harder attribute or use a smaller model is open; see the next entry.
+**Decision:** the plan's stop rule (base model above 90% on redacted dev) fired. The author chose to continue with the current task rather than add a harder attribute or switch to a smaller model, for the reasons in the plan's decision log. Two follow-ups:
+- GRPO will train only on items where the model's samples disagree.
+- The report now shows accuracy by category: with full text, Tops reach 84.4% on neckline and Shirts 85.6% on sleeve length, against 72.2% and 78.0% redacted.
+
+The two text-only flags ("vest", a lone "three quarter") turned out to be loose correlates in train and dev, so word list v1 stays frozen and these dev results stand.
