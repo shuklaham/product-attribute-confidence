@@ -1,0 +1,104 @@
+# Label set v0. Every option shown to the model and every scored label comes from here.
+# Phrases are case-insensitive regular expressions. They are used to detect labels named in
+# product text (kept labels only) and to redact text (kept and dropped labels).
+version: v0
+
+# Test and held-out items need at least this many training examples of their label.
+min_train_support: 30
+
+attributes:
+  neckline:
+    source_field: Neck
+    question: Which neckline does this product have?
+    # Any mention of the attribute. Redaction drops a clause that still contains one.
+    attribute_words: '\bneck(?:line|lines|s)?\b|\bcollar(?:ed|s)?\b'
+    # Used on the title and the leading noun phrase, where dropping the whole clause would
+    # also drop the product type.
+    head_fallback: '\b[\w/-]+[- ](?:neck(?:line|ed)?|collar(?:ed)?)\b|\bneck(?:line)?\b|\bcollar(?:ed)?\b'
+    labels:
+      - name: Round neck
+        definition: A rounded neckline that sits close to the base of the neck.
+        raw_values: [Round Neck]
+        phrases: ['\bround[- ]?neck(?:line|ed)?\b', '\bcrew[- ]?neck(?:line)?\b', '\bcrew\b']
+      - name: V-neck
+        definition: A neckline that dips to a point at the front, forming a V.
+        raw_values: [V-Neck]
+        phrases: ['\bv[- ]?neck(?:line|ed)?\b', '\bv[- ]shaped neck(?:line)?\b']
+      - name: Scoop neck
+        definition: A wide U-shaped neckline that dips lower at the front than a round neck.
+        raw_values: [Scoop Neck]
+        phrases: ['\bscoop(?:ed)?[- ]?neck(?:line)?\b', '\bscoop(?:ed)?\b', '\bu[- ]neck(?:line)?\b',
+                  '\bdeep[- ]round[- ]?neck(?:line)?\b']
+      - name: Boat neck
+        definition: A wide, shallow neckline that runs almost straight across from shoulder to shoulder.
+        raw_values: [Boat Neck]
+        phrases: ['\bboat[- ]?neck(?:line)?\b', '\bbateau\b']
+      - name: Square neck
+        definition: A neckline with straight sides and a straight front edge, forming a square.
+        raw_values: [Square Neck]
+        phrases: ['\bsquare[- ]?neck(?:line)?\b']
+      - name: Mandarin collar
+        definition: A short stand-up collar that does not fold over.
+        raw_values: [Mandarin Collar]
+        phrases: ['\bmandarin\b', '\bchinese collar\b', '\bband collar\b', '\bnehru collar\b']
+      - name: Polo collar
+        definition: A soft fold-over collar above a short buttoned placket, as on a polo shirt.
+        raw_values: [Polo Collar]
+        phrases: ['\bpolo\b']
+      - name: Shirt collar
+        definition: A pointed fold-over collar on a stand, as on a dress shirt.
+        raw_values: [Shirt Collar]
+        # "spread collar" is left out: it also describes polo and jersey collars (hand check, 2026-10-25).
+        phrases: ['\bshirt collar\b', '\bbutton[- ]down collar\b', '\bcollared\b']
+      - name: Cowl neck
+        definition: A neckline with soft draped folds of fabric at the front.
+        raw_values: [Cowl Neck]
+        phrases: ['\bcowl\b']
+    dropped:
+      - reason: strap or shoulder style, not a neckline shape
+        raw_values: [Shoulder Straps, Strapless, Off-Shoulder, One Shoulder, Halter Neck]
+        phrases: ['\bshoulder[- ]straps?\b', '\bspaghetti\b', '\bstrappy\b', '\bstrapless\b', '\btube\b',
+                  '\boff[- ]?(?:the[- ])?shoulder\b', '\bone[- ]shoulder\b', '\bhalter\b']
+      - reason: too rare, or not shared between seen and held-out categories
+        raw_values: [Tie-Up Neck, High Neck, Mock Neck, Keyhole Neck, Henley Neck, Hood]
+        phrases: ['\btie[- ]?up\b', '\bhigh[- ]?neck(?:ed)?\b', '\bturtle[- ]?neck\b', '\bmock[- ]?neck\b',
+                  '\bkeyhole\b', '\bhenley\b', '\bhood(?:ed|ie)?\b', '\bsweetheart\b']
+
+  sleeve_length:
+    source_field: Sleeve Length
+    question: What sleeve length does this product have?
+    attribute_words: '\bsleeve(?:s|d|less)?\b'
+    head_fallback: '\b[\w/-]+[- ]sleeve[sd]?\b|\bsleeve(?:s|d|less)?\b'
+    labels:
+      - name: Short sleeves
+        definition: Sleeves that end above the elbow.
+        raw_values: [Short Sleeves]
+        phrases: ['\bshort[- ]sleeve[sd]?\b', '\bhalf[- ]sleeve[sd]?\b', '\bcap[- ]sleeve[sd]?\b']
+      - name: Three-quarter sleeves
+        definition: Sleeves that end between the elbow and the wrist.
+        raw_values: [Three-Quarter Sleeves]
+        # Must lead to "sleeve" within three words: "three quarter pants" is not about sleeves, and a
+        # "mid-arm" button tab sits on rolled long sleeves (hand check, 2026-10-25).
+        phrases: ['\bthree[- ]quarter(?:[- ]length)?(?:[\s-]+[\w-]+){0,3}?[\s-]+sleeve[sd]?\b',
+                  '\b3/4(?:th)?(?:[- ]length)?(?:[\s-]+[\w-]+){0,3}?[\s-]+sleeve[sd]?\b']
+      - name: Long sleeves
+        definition: Sleeves that reach the wrist.
+        raw_values: [Long Sleeves]
+        phrases: ['\blong[- ]sleeve[sd]?\b', '\bfull[- ]sleeve[sd]?\b']
+      - name: Sleeveless
+        definition: No sleeves; the armhole is finished at the shoulder.
+        raw_values: [Sleeveless, No Sleeves]
+        # Strap styles describe a garment without sleeves, so they count as evidence too. "armholes" is
+        # left out: sleeved tops mention armholes as well (hand check, 2026-10-25).
+        phrases: ['\bsleeveless\b', '\bno sleeves?\b', '\btank\b', '\bcami(?:sole)?s?\b', '\bspaghetti\b',
+                  '\bstrappy\b', '\bstrapless\b', '\btube\b', '\bhalter\b', '\bracer(?:[- ]?back)?\b',
+                  '\bshoulder[- ]straps?\b', '\bstraps\b']
+    dropped: []
+    # Sleeves made to be worn rolled up are usually photographed rolled, so their length depends on a
+    # convention rather than on what the photo shows. Products whose text describes them are left out of
+    # this task in every split (decision 2026-10-25, from the hand check).
+    exclude_if:
+      reason: roll_up_sleeves
+      phrases: ['\broll(?:ed)?[- ]?up\b', '\broll[- ]?tabs?\b', '\btabbed sleeves?\b',
+                '\b(?:button(?:ed)?|sleeve)[- ]tabs?\b', '\bmid[- ]?(?:arm|sleeve)\b',
+                '\bfold[- ]?over sleeves?\b', '\bturn[- ]?up sleeves?\b', '\bconvertible sleeves?\b']

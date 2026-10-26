@@ -1,97 +1,158 @@
-# Data audit: Myntra Fashion Product Images
+# Data audit: Myntra Fashion Product Images, ontology v0
 
-Parsed 44,446 product records (0 unreadable). 15,712 are in the 3 seen and 8 held-out categories.
+Parsed 44,446 records (0 unreadable); source fingerprint `f1352f4f7be4`, ontology `v0` (`1b76185bf82f`). 15,712 products are in the 3 seen and 8 held-out categories.
 
-## Label coverage by category
+## Coverage by category
 
-| Category | Split | Products | Neckline labels | Sleeve labels | Extra views listed |
-|---|---|---|---|---|---|
-| Tshirts | seen | 7070 | 6065 | 6270 | 100% |
-| Tops | seen | 1762 | 1555 | 1734 | 100% |
-| Shirts | seen | 3217 | 0 | 2957 | 100% |
-| Kurtas | held-out | 1844 | 561 | 624 | 100% |
-| Kurtis | held-out | 234 | 69 | 79 | 100% |
-| Tunics | held-out | 229 | 94 | 104 | 100% |
-| Dresses | held-out | 464 | 390 | 220 | 100% |
-| Nightdress | held-out | 189 | 161 | 82 | 100% |
-| Night suits | held-out | 141 | 137 | 138 | 100% |
-| Sweatshirts | held-out | 285 | 85 | 271 | 100% |
-| Sweaters | held-out | 277 | 25 | 27 | 100% |
+| Category | Side | Products | neckline values | sleeve_length values |
+|---|---|---|---|---|
+| Tshirts | seen | 7070 | 6065 | 6270 |
+| Tops | seen | 1762 | 1555 | 1734 |
+| Shirts | seen | 3217 | 0 | 2957 |
+| Kurtas | held-out | 1844 | 561 | 624 |
+| Kurtis | held-out | 234 | 69 | 79 |
+| Tunics | held-out | 229 | 94 | 104 |
+| Dresses | held-out | 464 | 390 | 220 |
+| Nightdress | held-out | 189 | 161 | 82 |
+| Night suits | held-out | 141 | 137 | 138 |
+| Sweatshirts | held-out | 285 | 85 | 271 |
+| Sweaters | held-out | 277 | 25 | 27 |
 
 ## Neckline
 
-### Label counts
+### Decisions
 
-| Label | Seen categories | Held-out categories | Note |
-|---|---|---|---|
-| Round Neck | 5085 | 792 |  |
-| Polo Collar | 1378 | 0 |  |
-| V-Neck | 400 | 353 |  |
-| Scoop Neck | 277 | 6 |  |
-| Mandarin Collar | 79 | 163 |  |
-| Boat Neck | 79 | 41 |  |
-| Square Neck | 51 | 44 |  |
-| Shirt Collar | 49 | 32 |  |
-| Shoulder Straps | 75 | 3 |  |
-| Strapless | 26 | 51 | too little training support |
-| Cowl Neck | 47 | 2 |  |
-| Tie-Up Neck | 30 | 0 |  |
-| Off-Shoulder | 2 | 20 | too little training support |
-| Halter Neck | 6 | 11 | too little training support |
-| High Neck | 16 | 0 |  |
-| One Shoulder | 10 | 0 |  |
-| Keyhole Neck | 7 | 0 |  |
-| Henley Neck | 3 | 0 |  |
-| Mock Neck | 0 | 2 | too little training support |
-| Hood | 0 | 2 | too little training support |
-
-### Guessing the most common label per category
-
-| Split | Labeled products | Accuracy |
+| Outcome | Seen | Held-out |
 |---|---|---|
-| seen | 7620 | 67% |
-| held-out | 1522 | 55% |
+| included | 6829 | 1236 |
+| text_conflict | 413 | 108 |
+| family_disagreement | 158 | 30 |
+| roll_up_sleeves | 0 | 0 |
+| dropped_label | 175 | 89 |
+| unmapped_value | 0 | 0 |
+| crossing_family | 16 | 4 |
+| no_usable_photo | 8 | 1 |
+| unsupported_label | 21 | 54 |
 
-### How often the text gives the label away
+### Included labels by split
 
-| Split | N | Attribute word in title | in variant name | in description | Text names the label | Text names another label | Text names none |
-|---|---|---|---|---|---|---|---|
-| seen | 7620 | 1% | 2% | 89% | 79% | 8% | 14% |
-| held-out | 1522 | 0% | 6% | 89% | 69% | 14% | 17% |
+| Label | train | dev | cal_fit | cal_threshold | test | heldout_test |
+|---|---|---|---|---|---|---|
+| Round neck | 3304 | 503 | 232 | 310 | 509 | 707 |
+| V-neck | 237 | 43 | 18 | 18 | 29 | 336 |
+| Scoop neck | 69 | 8 | 7 | 7 | 4 | 2 |
+| Boat neck | 31 | 0 | 5 | 0 | 4 | 33 |
+| Square neck | 15 | 0 | 0 | 0 | 0 | 0 |
+| Mandarin collar | 45 | 7 | 1 | 7 | 5 | 156 |
+| Polo collar | 959 | 148 | 67 | 68 | 112 | 0 |
+| Shirt collar | 16 | 0 | 0 | 0 | 0 | 0 |
+| Cowl neck | 30 | 7 | 2 | 0 | 2 | 2 |
 
-"Text names another label" marks possible label noise or a phrase-matching miss; inspect samples before excluding.
+### Label-noise estimate
+
+Share of mapped labels whose listing text names a different label. These are excluded from training and the clean test sets.
+
+| Category | Mapped labels | Text names another label | Rate |
+|---|---|---|---|
+| Kurtis | 69 | 18 | 26% |
+| Tops | 1380 | 337 | 24% |
+| Night suits | 137 | 28 | 20% |
+| Dresses | 311 | 31 | 10% |
+| Nightdress | 156 | 8 | 5% |
+| Sweatshirts | 80 | 4 | 5% |
+| Kurtas | 561 | 24 | 4% |
+| Tunics | 90 | 3 | 3% |
+| Tshirts | 6049 | 141 | 2% |
+| Sweaters | 25 | 0 | 0% |
+
+### Included labels: does the text name the answer?
+
+| Side | Included | Text names the label | Text names no label |
+|---|---|---|---|
+| seen | 6829 | 85% | 15% |
+| held-out | 1236 | 78% | 22% |
+
+### Guessing the most common label per category (no photo, no text)
+
+| Split | Included | Accuracy |
+|---|---|---|
+| test | 665 | 77% |
+| heldout_test | 1236 | 61% |
+
+### Redaction check (evaluation splits)
+
+- Redacted texts that still contain an attribute word or label phrase: 0 of 3,359.
+- Descriptions that become empty: 0 (0%).
+- Median share of description length kept: 95%.
+- The stronger check, a text-only model on redacted dev text scoring near the category guess, runs in Milestone 2.
 
 ## Sleeve length
 
-### Label counts
+### Decisions
 
-| Label | Seen categories | Held-out categories | Note |
-|---|---|---|---|
-| Short Sleeves | 7543 | 533 |  |
-| Long Sleeves | 2524 | 336 |  |
-| Sleeveless | 695 | 370 |  |
-| Three-Quarter Sleeves | 199 | 306 |  |
-
-### Guessing the most common label per category
-
-| Split | Labeled products | Accuracy |
+| Outcome | Seen | Held-out |
 |---|---|---|
-| seen | 10961 | 84% |
-| held-out | 1545 | 60% |
+| included | 10069 | 1424 |
+| text_conflict | 234 | 67 |
+| family_disagreement | 71 | 16 |
+| roll_up_sleeves | 559 | 31 |
+| dropped_label | 0 | 0 |
+| unmapped_value | 0 | 0 |
+| crossing_family | 16 | 6 |
+| no_usable_photo | 12 | 1 |
+| unsupported_label | 0 | 0 |
 
-### How often the text gives the label away
+### Included labels by split
 
-| Split | N | Attribute word in title | in variant name | in description | Text names the label | Text names another label | Text names none |
-|---|---|---|---|---|---|---|---|
-| seen | 10961 | 0% | 1% | 82% | 71% | 3% | 26% |
-| held-out | 1545 | 1% | 5% | 91% | 72% | 5% | 23% |
+| Label | train | dev | cal_fit | cal_threshold | test | heldout_test |
+|---|---|---|---|---|---|---|
+| Short sleeves | 4977 | 771 | 348 | 426 | 716 | 472 |
+| Three-quarter sleeves | 93 | 14 | 10 | 4 | 9 | 280 |
+| Long sleeves | 1410 | 215 | 96 | 97 | 220 | 321 |
+| Sleeveless | 463 | 65 | 31 | 32 | 72 | 351 |
 
-"Text names another label" marks possible label noise or a phrase-matching miss; inspect samples before excluding.
+### Label-noise estimate
+
+Share of mapped labels whose listing text names a different label. These are excluded from training and the clean test sets.
+
+| Category | Mapped labels | Text names another label | Rate |
+|---|---|---|---|
+| Dresses | 220 | 24 | 11% |
+| Kurtis | 79 | 8 | 10% |
+| Nightdress | 82 | 7 | 9% |
+| Tops | 1725 | 127 | 7% |
+| Night suits | 138 | 9 | 7% |
+| Shirts | 2957 | 105 | 4% |
+| Kurtas | 624 | 21 | 3% |
+| Tunics | 103 | 2 | 2% |
+| Tshirts | 6263 | 66 | 1% |
+| Sweatshirts | 266 | 1 | 0% |
+| Sweaters | 27 | 0 | 0% |
+
+### Included labels: does the text name the answer?
+
+| Side | Included | Text names the label | Text names no label |
+|---|---|---|---|
+| seen | 10069 | 73% | 27% |
+| held-out | 1424 | 79% | 21% |
+
+### Guessing the most common label per category (no photo, no text)
+
+| Split | Included | Accuracy |
+|---|---|---|
+| test | 1017 | 85% |
+| heldout_test | 1424 | 61% |
+
+### Redaction check (evaluation splits)
+
+- Redacted texts that still contain an attribute word or label phrase: 0 of 4,550.
+- Descriptions that become empty: 0 (0%).
+- Median share of description length kept: 97%.
+- The stronger check, a text-only model on redacted dev text scoring near the category guess, runs in Milestone 2.
 
 ## Colour-variant families
 
-- 12,452 families cover 15,712 in-scope products; 5,595 products (36%) share a family with another product.
+- 12,452 families cover 15,712 in-scope products; 5,595 products (36%) share a family.
 - Family sizes (5 means 5 or more): 1: 10,117, 2: 1,824, 3: 319, 4: 113, 5: 79
-- Families spanning seen and held-out categories: 12 (keep together or exclude).
-- Families with conflicting labels: neckline: 86, sleeve_length: 40
+- Families spanning seen and held-out categories, excluded: 12.
 
