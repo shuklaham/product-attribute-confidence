@@ -1,0 +1,141 @@
+product_id,attribute,catalog_label,text_names,verdict,note,reviewer,reviewed_at
+1617,sleeve_length,Short sleeves,Three-quarter sleeves,Phrase matcher misread the text,'three quarter pants' matched as sleeves; the T-shirt has short sleeves,claude,2026-10-25T23:37:06+00:00
+2164,sleeve_length,Long sleeves,Short sleeves,Description is wrong,long sleeves to the wrist,claude,2026-10-25T23:37:06+00:00
+2164,sleeve_length,Long sleeves,Short sleeves,Description is wrong,,human,2026-10-25T23:58:43+00:00
+2165,sleeve_length,Long sleeves,Short sleeves,Description is wrong,long sleeves,claude,2026-10-25T23:37:06+00:00
+2934,sleeve_length,Short sleeves,Sleeveless,Catalog label is wrong,,human,2026-10-25T23:25:36+00:00
+3786,neckline,Round neck,Polo collar,Catalog label is wrong,polo collar,claude,2026-10-25T23:37:06+00:00
+4620,neckline,Round neck,Boat neck,Description is wrong,close round neckline,claude,2026-10-25T23:37:06+00:00
+4722,neckline,Round neck,Scoop neck,Description is wrong,close round neck in the flat-lay photo,claude,2026-10-25T23:37:06+00:00
+4860,neckline,Polo collar,Shirt collar,Phrase matcher misread the text,'spread collar' describes this jersey's polo collar,claude,2026-10-25T23:37:06+00:00
+5137,neckline,Scoop neck,Round neck,Description is wrong,"wide, low gathered neckline: scoop",claude,2026-10-25T23:37:06+00:00
+5148,sleeve_length,Short sleeves,Sleeveless,Description is wrong,"short cap sleeves, not a tank",claude,2026-10-25T23:37:06+00:00
+5717,neckline,Round neck,Polo collar,Catalog label is wrong,polo collar,claude,2026-10-25T23:37:06+00:00
+5750,sleeve_length,Short sleeves,Sleeveless,Description is wrong,short cap sleeves,claude,2026-10-25T23:37:06+00:00
+5759,neckline,Scoop neck,Round neck,Can't tell,neckline hidden by a necklace,claude,2026-10-25T23:37:06+00:00
+5780,neckline,Round neck,Boat neck,Catalog label is wrong,"wide, shallow neckline: boat",claude,2026-10-25T23:37:06+00:00
+5780,neckline,Round neck,Boat neck,Catalog label is wrong,,human,2026-10-26T00:05:19+00:00
+5808,neckline,Scoop neck,V-neck,Description is wrong,"U-shaped neckline: scoop, not V",claude,2026-10-25T23:37:06+00:00
+5891,neckline,Round neck,Polo collar,Catalog label is wrong,polo collar,claude,2026-10-25T23:37:06+00:00
+6087,neckline,Scoop neck,Boat neck,Can't tell,neckline partly hidden by a necklace,claude,2026-10-25T23:37:06+00:00
+6245,neckline,Round neck,V-neck,Catalog label is wrong,V-neck,claude,2026-10-25T23:37:06+00:00
+6267,neckline,Round neck,Boat neck,Catalog label is wrong,"wide, shallow neckline: boat",claude,2026-10-25T23:37:06+00:00
+6267,neckline,Round neck,Boat neck,Catalog label is wrong,,human,2026-10-26T00:05:53+00:00
+7652,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,long sleeves,claude,2026-10-25T23:37:06+00:00
+7791,sleeve_length,Three-quarter sleeves,Short sleeves,Can't tell,"the photo shows only the lounge pants, not the sleeves",claude,2026-10-25T23:37:06+00:00
+8322,sleeve_length,Short sleeves,Sleeveless,Catalog label is wrong,sleeveless,claude,2026-10-25T23:37:06+00:00
+8381,neckline,V-neck,Round neck,Catalog label is wrong,"round neck, not V",claude,2026-10-25T23:37:06+00:00
+8448,sleeve_length,Three-quarter sleeves,Long sleeves,Description is wrong,sleeves end between elbow and wrist: three-quarter,claude,2026-10-25T23:37:06+00:00
+8448,sleeve_length,Three-quarter sleeves,Long sleeves,Description is wrong,,human,2026-10-25T23:58:51+00:00
+8798,sleeve_length,Short sleeves,Long sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+8798,sleeve_length,Short sleeves,Long sleeves,Can't tell,,human,2026-10-25T23:54:32+00:00
+8818,sleeve_length,Short sleeves,Long sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+9709,sleeve_length,Long sleeves,Short sleeves,Catalog label is wrong,short sleeves,claude,2026-10-25T23:37:06+00:00
+10418,sleeve_length,Short sleeves,Sleeveless,Description is wrong,short cap sleeves,claude,2026-10-25T23:37:06+00:00
+10498,sleeve_length,Short sleeves,Long sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+10505,sleeve_length,Short sleeves,Sleeveless,Description is wrong,short rolled cap sleeves; the title says half sleeve,claude,2026-10-25T23:37:06+00:00
+11036,neckline,Scoop neck,Round neck,Can't tell,wide gathered peasant neckline: round or scoop,claude,2026-10-25T23:37:06+00:00
+11130,sleeve_length,Short sleeves,Three-quarter sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+11432,sleeve_length,Short sleeves,Sleeveless,Phrase matcher misread the text,'armholes' matched as sleeveless; the top has short sleeves,claude,2026-10-25T23:37:06+00:00
+11658,neckline,Round neck,Scoop neck,Description is wrong,close round neck,claude,2026-10-25T23:37:06+00:00
+11668,neckline,Round neck,Scoop neck,Can't tell,between round and scoop,claude,2026-10-25T23:37:06+00:00
+11777,sleeve_length,Long sleeves,Short sleeves,Description is wrong,long sleeves,claude,2026-10-25T23:37:06+00:00
+11777,sleeve_length,Long sleeves,Short sleeves,Description is wrong,,human,2026-10-26T00:05:03+00:00
+13325,sleeve_length,Short sleeves,Long sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+13943,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,"long sleeves, cuffs folded once",claude,2026-10-25T23:37:06+00:00
+13946,neckline,Scoop neck,V-neck,Catalog label is wrong,V-neck,claude,2026-10-25T23:37:06+00:00
+14088,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,long sleeves,claude,2026-10-25T23:37:06+00:00
+14088,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,,human,2026-10-25T21:15:52+00:00
+15042,sleeve_length,Three-quarter sleeves,Short sleeves,Catalog label is wrong,short sleeves,claude,2026-10-25T23:37:06+00:00
+18732,neckline,Scoop neck,Round neck,Can't tell,neckline hidden by necklaces,claude,2026-10-25T23:37:06+00:00
+18763,sleeve_length,Three-quarter sleeves,Long sleeves,Description is wrong,sleeves end above the wrist: three-quarter,claude,2026-10-25T23:37:06+00:00
+18763,sleeve_length,Three-quarter sleeves,Long sleeves,Description is wrong,,human,2026-10-26T00:02:24+00:00
+19157,sleeve_length,Short sleeves,Long sleeves,Description is wrong,short sleeves,claude,2026-10-25T23:37:06+00:00
+19157,sleeve_length,Short sleeves,Long sleeves,Description is wrong,,human,2026-10-26T00:02:51+00:00
+19587,neckline,Scoop neck,Round neck,Can't tell,wide neckline: scoop or boat,claude,2026-10-25T23:37:06+00:00
+19598,neckline,Scoop neck,Round neck,Description is wrong,"wide, lowered U-shaped neckline: scoop",claude,2026-10-25T23:37:06+00:00
+19598,neckline,Scoop neck,Round neck,Description is wrong,,human,2026-10-25T23:52:12+00:00
+19645,neckline,Boat neck,Round neck,Description is wrong,"wide, shallow neckline: boat",claude,2026-10-25T23:37:06+00:00
+19678,sleeve_length,Short sleeves,"Long sleeves, Three-quarter sleeves",Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+19678,sleeve_length,Short sleeves,Long sleeves,Can't tell,,human,2026-10-25T23:53:50+00:00
+20120,sleeve_length,Short sleeves,Three-quarter sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+20121,neckline,V-neck,Round neck,Catalog label is wrong,"rounded neckline with a placket, not V",claude,2026-10-25T23:37:06+00:00
+20130,sleeve_length,Long sleeves,Three-quarter sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+20142,sleeve_length,Short sleeves,"Long sleeves, Three-quarter sleeves",Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+20142,sleeve_length,Short sleeves,Long sleeves,Description is wrong,,human,2026-10-25T23:54:47+00:00
+20196,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,long sleeves,claude,2026-10-25T23:37:06+00:00
+20320,sleeve_length,Short sleeves,"Long sleeves, Three-quarter sleeves",Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+21114,sleeve_length,Short sleeves,"Sleeveless, Three-quarter sleeves",Description is wrong,,human,2026-10-25T23:17:24+00:00
+21130,neckline,V-neck,Round neck,Description is wrong,neckline dips to a point: V,claude,2026-10-25T23:37:06+00:00
+21130,neckline,V-neck,Round neck,Description is wrong,,human,2026-10-26T00:02:19+00:00
+21158,neckline,Round neck,Boat neck,Catalog label is wrong,"wide, shallow neckline: boat",claude,2026-10-25T23:37:06+00:00
+21158,neckline,Round neck,Boat neck,Description is wrong,,human,2026-10-26T00:02:12+00:00
+21170,neckline,Scoop neck,Boat neck,Description is wrong,"wide, lowered neckline: scoop",claude,2026-10-25T23:37:06+00:00
+21450,neckline,Scoop neck,Round neck,Description is wrong,U-shaped neckline: scoop,claude,2026-10-25T23:37:06+00:00
+24987,neckline,Scoop neck,Round neck,Description is wrong,deep U-shaped neckline: scoop,claude,2026-10-25T23:37:06+00:00
+26888,sleeve_length,Short sleeves,Sleeveless,Phrase matcher misread the text,"two-piece: the inner layer is sleeveless, the outer top has short sleeves",claude,2026-10-25T23:37:06+00:00
+26898,neckline,Scoop neck,Round neck,Description is wrong,"wide, lowered neckline: scoop",claude,2026-10-25T23:37:06+00:00
+26898,neckline,Scoop neck,Round neck,Description is wrong,,human,2026-10-26T00:04:59+00:00
+26902,neckline,Round neck,Boat neck,Catalog label is wrong,"wide, shallow neckline: boat",claude,2026-10-25T23:37:06+00:00
+26902,neckline,Round neck,Boat neck,Description is wrong,,human,2026-10-26T00:06:16+00:00
+26906,neckline,Scoop neck,Round neck,Description is wrong,,human,2026-10-25T21:16:54+00:00
+26916,sleeve_length,Short sleeves,Three-quarter sleeves,Description is wrong,,human,2026-10-25T23:15:53+00:00
+26918,neckline,Scoop neck,Round neck,Description is wrong,"wide, lowered neckline: scoop",claude,2026-10-25T23:37:06+00:00
+27196,sleeve_length,Sleeveless,Short sleeves,Description is wrong,,human,2026-10-25T22:56:28+00:00
+27261,neckline,Scoop neck,Round neck,Description is wrong,U-shaped neckline: scoop,claude,2026-10-25T23:37:06+00:00
+27436,neckline,Scoop neck,Round neck,Description is wrong,U-shaped neckline: scoop,claude,2026-10-25T23:37:06+00:00
+27857,sleeve_length,Long sleeves,Three-quarter sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+27858,sleeve_length,Long sleeves,Three-quarter sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+32381,neckline,Round neck,Scoop neck,Catalog label is wrong,"lowered neckline dipping at the front, not a close round neck",claude,2026-10-25T23:37:06+00:00
+32381,neckline,Round neck,Scoop neck,Catalog label is wrong,,human,2026-10-26T00:05:35+00:00
+33168,neckline,Square neck,Round neck,Catalog label is wrong,"rounded neckline with a placket, not square",claude,2026-10-25T23:37:06+00:00
+33168,neckline,Square neck,Round neck,Catalog label is wrong,,human,2026-10-25T23:54:29+00:00
+33188,neckline,Square neck,Round neck,Description is wrong,squared neckline,claude,2026-10-25T23:37:06+00:00
+33542,sleeve_length,Short sleeves,Three-quarter sleeves,Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+33542,sleeve_length,Short sleeves,Three-quarter sleeves,Can't tell,,human,2026-10-25T23:52:02+00:00
+33755,neckline,Scoop neck,Round neck,Description is wrong,U-shaped neckline: scoop,claude,2026-10-25T23:37:06+00:00
+34155,neckline,Boat neck,Round neck,Catalog label is wrong,"close round neck, not boat",claude,2026-10-25T23:37:06+00:00
+34155,neckline,Boat neck,Round neck,Catalog label is wrong,,human,2026-10-26T00:05:45+00:00
+34476,sleeve_length,Short sleeves,Sleeveless,Can't tell,flutter cap at the shoulder: sleeveless or cap,claude,2026-10-25T23:37:06+00:00
+34575,neckline,Scoop neck,Round neck,Phrase matcher misread the text,"'deep round neck' describes a scoop, which matches the catalog",claude,2026-10-25T23:37:06+00:00
+35983,neckline,Round neck,Scoop neck,Can't tell,between round and scoop,claude,2026-10-25T23:37:06+00:00
+35986,neckline,Round neck,Boat neck,Catalog label is wrong,wide neckline: boat,claude,2026-10-25T23:37:06+00:00
+36733,neckline,Round neck,Scoop neck,Catalog label is wrong,"deep U-shaped neckline (the description says u-neck), not a close round neck",claude,2026-10-25T23:37:06+00:00
+36733,neckline,Round neck,Scoop neck,Catalog label is wrong,,human,2026-10-25T23:52:42+00:00
+36857,sleeve_length,Short sleeves,"Long sleeves, Three-quarter sleeves",Can't tell,roll-up sleeves: photographed rolled above the elbow; the description gives the unrolled length,claude,2026-10-25T23:37:06+00:00
+36857,sleeve_length,Short sleeves,"Long sleeves, Three-quarter sleeves",Catalog label is wrong,,human,2026-10-25T23:27:25+00:00
+38866,neckline,Scoop neck,Round neck,Description is wrong,U-shaped neckline: scoop,claude,2026-10-25T23:37:06+00:00
+40019,neckline,Polo collar,Round neck,Description is wrong,polo collar with a buttoned placket,claude,2026-10-25T23:37:06+00:00
+40419,sleeve_length,Short sleeves,Sleeveless,Can't tell,ruffled armholes: sleeveless or cap,claude,2026-10-25T23:37:06+00:00
+40420,neckline,Scoop neck,Round neck,Description is wrong,,human,2026-10-25T23:26:55+00:00
+40429,neckline,Round neck,V-neck,Description is wrong,"rounded neckline with buttons, not V",claude,2026-10-25T23:37:06+00:00
+40958,sleeve_length,Short sleeves,Sleeveless,Catalog label is wrong,sleeveless,claude,2026-10-25T23:37:06+00:00
+40985,neckline,Round neck,"Polo collar, Shirt collar",Description is wrong,round neck with no collar; the description seems to belong to another product,claude,2026-10-25T23:37:06+00:00
+42515,neckline,Round neck,Scoop neck,Catalog label is wrong,,human,2026-10-25T23:24:50+00:00
+43054,neckline,Round neck,V-neck,Description is wrong,,human,2026-10-25T23:17:38+00:00
+43539,sleeve_length,Short sleeves,Sleeveless,Can't tell,this is cap sleeve,human,2026-10-25T23:15:25+00:00
+43639,neckline,Boat neck,Round neck,Can't tell,wide rounded neckline: round or boat,claude,2026-10-25T23:37:06+00:00
+43922,neckline,Square neck,Boat neck,Catalog label is wrong,,human,2026-10-25T22:55:57+00:00
+45949,neckline,Boat neck,Round neck,Description is wrong,"wide, shallow neckline reads as boat; 'Round Neck' is in the variant name, likely a product-line name",claude,2026-10-25T23:37:06+00:00
+45949,neckline,Boat neck,Round neck,Description is wrong,,human,2026-10-25T23:56:02+00:00
+45954,neckline,Boat neck,Round neck,Description is wrong,"wide, shallow batwing neckline: boat; same product line as #1",claude,2026-10-25T23:37:06+00:00
+46269,neckline,Scoop neck,Round neck,Description is wrong,U-shaped gathered neckline: scoop,claude,2026-10-25T23:37:06+00:00
+49652,sleeve_length,Sleeveless,Short sleeves,Can't tell,frilled cap at the shoulder: sleeveless or cap,claude,2026-10-25T23:37:06+00:00
+51452,neckline,Scoop neck,Round neck,Can't tell,smocked tie-front neckline: round or scoop,claude,2026-10-25T23:37:06+00:00
+52400,neckline,Round neck,V-neck,Description is wrong,,human,2026-10-25T23:17:03+00:00
+53780,sleeve_length,Short sleeves,Sleeveless,Catalog label is wrong,sleeveless,claude,2026-10-25T23:37:06+00:00
+53780,sleeve_length,Short sleeves,Sleeveless,Catalog label is wrong,,human,2026-10-26T00:05:25+00:00
+54936,neckline,Boat neck,Round neck,Description is wrong,"wide, shallow batwing neckline: boat",claude,2026-10-25T23:37:06+00:00
+54937,neckline,Boat neck,Round neck,Description is wrong,"wide, shallow batwing neckline: boat",claude,2026-10-25T23:37:06+00:00
+54937,neckline,Boat neck,Round neck,Description is wrong,,human,2026-10-25T23:58:30+00:00
+54957,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,long sleeves,claude,2026-10-25T23:37:06+00:00
+54959,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,hoodie with long sleeves and ribbed cuffs,claude,2026-10-25T23:37:06+00:00
+54959,sleeve_length,Short sleeves,Long sleeves,Catalog label is wrong,,human,2026-10-26T00:02:34+00:00
+56257,neckline,Shirt collar,V-neck,Catalog label is wrong,,human,2026-10-25T22:57:01+00:00
+56699,sleeve_length,Short sleeves,Long sleeves,Description is wrong,,human,2026-10-25T22:57:13+00:00
+57111,neckline,Mandarin collar,V-neck,Can't tell,stand-up band collar with a V opening; both labels partly apply,claude,2026-10-25T23:37:06+00:00
+58015,neckline,Scoop neck,"Cowl neck, V-neck",Catalog label is wrong,deep V neckline,claude,2026-10-25T23:37:06+00:00
+58500,neckline,Scoop neck,Round neck,Description is wrong,U-shaped tie-front neckline: scoop,claude,2026-10-25T23:37:06+00:00
+59399,sleeve_length,Short sleeves,Sleeveless,Catalog label is wrong,sleeveless with extended shoulders,claude,2026-10-25T23:37:06+00:00
+59796,neckline,Scoop neck,Round neck,Can't tell,between round and scoop,claude,2026-10-25T23:37:06+00:00
+59965,sleeve_length,Short sleeves,Three-quarter sleeves,Catalog label is wrong,,human,2026-10-25T23:27:39+00:00
