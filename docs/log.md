@@ -217,3 +217,17 @@ One entry per working session: what ran, what it cost, what it showed, and what 
 - The report now shows accuracy by category: with full text, Tops reach 84.4% on neckline and Shirts 85.6% on sleeve length, against 72.2% and 78.0% redacted.
 
 The two text-only flags ("vest", a lone "three quarter") turned out to be loose correlates in train and dev, so word list v1 stays frozen and these dev results stand.
+
+**Second decision: the main comparison changes before any training.** SFT with the confidence value left out of the loss will most likely keep the base model's habit of stating 0.95. A Platt map on that would be a constant. The author chose the recommended fix:
+- the primary comparison becomes M4 against M2-logit, the temperature-scaled letter probabilities, which are the strongest cheap fix;
+- M4 against M2 becomes secondary;
+- M1 stays plain SFT;
+- Milestone 3 reports M1's confidence distribution instead of requiring it to vary.
+
+**Milestone 2 exit criteria:**
+- the dev table is in `reports/m0_dev.md`;
+- the model-based redaction check found no statements beyond two loose correlates;
+- the invalid-output rate is known (0%);
+- the image budget is frozen.
+
+Milestone 2 is complete.

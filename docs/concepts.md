@@ -6,7 +6,9 @@ Short explanations of each part of the project, in the order of the pipeline. Ea
 
 A model reads a product listing and fills in an attribute, such as the neckline, together with a stated confidence. A field is filled automatically only when the confidence clears a threshold. That only works if the confidence is honest, including on product categories the threshold was never tuned on.
 
-The study asks whether RL with a calibration reward (M4) keeps confidence more honest under category shift than supervised fine-tuning plus a two-parameter post-hoc fix (M2), and whether the calibration reward itself is what matters (M4 against M3).
+The study asks whether RL with a calibration reward (M4) keeps confidence more honest under category shift than supervised fine-tuning plus the best cheap fix, and whether the calibration reward itself is what matters (M4 against M3).
+
+The cheap fix to beat is M2-logit: the probability the fine-tuned model gives its chosen answer letter, rescaled by one temperature. The base model shows why. It states a confidence of 0.95 on nearly every answer, so the number it writes says nothing about which answers are wrong (AUROC 0.50). Yet the probability it gives its chosen letter ranks answers well (AUROC 0.92–0.98). The model holds the information internally but does not say it. RL with a calibration reward is one way to make it say it.
 
 ## 2. Calibration and the Brier score
 
@@ -31,10 +33,10 @@ Code: `src/pac/rewards.py`.
 | Comparison | What it shows |
 |---|---|
 | M0 against M1 | What fine-tuning does to accuracy and to stated confidence |
-| M1 against M2 | What a two-number fix does: q′ = sigmoid(a · logit(q) + b), fitted on the calibration split |
+| M1 against M2 | What a two-number fix on the stated confidence does: q′ = sigmoid(a · logit(q) + b), fitted on the calibration split. If M1 states the same value for everything, as the base model does, the map can only return another constant |
 | M3 against M4 | The effect of the calibration term alone; everything else is identical |
-| M4 against M2 (primary) | Whether RL beats the cheap fix on held-out categories with redacted text |
-| M2-logit | A second cheap baseline: the probability the model assigns to its answer letter, rescaled by a temperature |
+| M4 against M2-logit (primary) | Whether RL makes the stated confidence beat the best cheap fix, the temperature-scaled letter probability, on held-out categories with redacted text |
+| M4 against M2 | Whether RL beats a post-hoc fix of the stated number itself |
 
 The Platt map in M2 can correct systematic over- or under-confidence on the data it is fitted to. It cannot reorder confidences, because it is monotone. It also learns the base rates of the calibration split, which is exactly what may break under shift.
 
@@ -152,7 +154,7 @@ Each metric answers a different question, and a method can win on one while losi
 - 0 and 1 have no finite logit, so stated confidence is clipped to [0.005, 0.995] first. Models state confidence in steps of 0.01 or coarser, so a stated 1.0 is read as half a step above 0.99. The clip is fixed in advance because it matters: with many stated 1.0s it decides where that cluster sits on the logit axis, and the fit follows.
 - Temperature: the answer-letter probabilities become softmax(log-probabilities / t), with t chosen to minimize the negative log-likelihood of the correct letters by golden-section search. A t above 1 softens overconfident probabilities. The chosen letter never changes, so accuracy is unchanged.
 
-**Intervals.** Differences between methods come from a paired bootstrap over product families. Each resample draws families with replacement, keeps every row of a drawn family together, and scores both methods on the same draw. Colour variants are near-duplicates, so resampling single items would overstate the evidence and make the intervals too narrow. M2's map is itself an estimate from a few hundred calibration items, so for M2 each draw also refits the map on a resample of the calibration families. A statistic that is undefined on some draw, such as AUROC on a draw with no wrong answers, stops the bootstrap with an error instead of quietly shrinking the interval.
+**Intervals.** Differences between methods come from a paired bootstrap over product families. Each resample draws families with replacement, keeps every row of a drawn family together, and scores both methods on the same draw. Colour variants are near-duplicates, so resampling single items would overstate the evidence and make the intervals too narrow. M2's Platt map and M2-logit's temperature are themselves estimates from a few hundred calibration items, so for those methods each draw also refits the map on a resample of the calibration families. A statistic that is undefined on some draw, such as AUROC on a draw with no wrong answers, stops the bootstrap with an error instead of quietly shrinking the interval.
 
 Code: `src/pac/metrics.py`, `src/pac/calibration.py`. Tests: `tests/test_metrics.py`, `tests/test_calibration.py`.
 

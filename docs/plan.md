@@ -1,6 +1,6 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 2 runs done (2026-10-26). The base model scores 95.5% (neckline) and 93.6% (sleeve length) on redacted dev, above the 90% stop line, while its stated confidence carries no information (0.95 on nearly every answer) and its letter probabilities do. How to proceed is under decision; see `docs/log.md`. Last updated 2026-10-26.
+Status: Milestone 2 (end-to-end baseline) complete. The base model scores 95.5% (neckline) and 93.6% (sleeve length) on redacted dev, above the 90% stop line, and the author chose to continue. Its stated confidence carries no information (0.95 on nearly every answer) while its letter probabilities do, so the primary comparison is now RL (M4) against temperature-scaled letter probabilities (M2-logit). Milestone 3 (SFT) is next. Last updated 2026-10-26.
 
 ## 1. Question
 
@@ -58,6 +58,7 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-26 | Freeze the image budget: one photo per product, at most 512 px on the long side | Measured 167–194 image tokens per photo on dev; the longest prompt with its photo is 765 tokens |
 | 2026-10-26 | Continue with both attributes and the held-out primary comparison, although the base model scores above the 90% stop line on redacted dev (author's decision) | The difficulty is concentrated rather than absent: Tops score 72% on neckline, scoop necks and Mandarin collars are mostly missed, and long-sleeve shirts photographed rolled up are called three-quarter. Reweighted to the held-out label mix, neckline accuracy would be about 80%. The study's phenomenon is clear: stated confidence is 0.95 on nearly every answer (AUROC 0.50) while the letter probabilities rank answers well (AUROC 0.92–0.98). Results are reported by category so T-shirts cannot hide the hard slices |
 | 2026-10-26 | GRPO trains only on training items where the model's sampled answers are neither all right nor all wrong; M3 and M4 use the same pool | A group whose 8 answers are all right, or all wrong, gives every sample the same correctness reward and no learning signal. With T-shirts near 99%, an unfiltered pool would be mostly such groups |
+| 2026-10-26 | The primary comparison becomes M4 against M2-logit; M4 against M2 becomes secondary; M1 stays plain SFT (author's decision, before any training) | The base model states 0.95 on nearly every answer, and SFT with the confidence value left out of the loss will most likely keep that habit, so a Platt map on M1's stated confidence would turn a constant into another constant. Temperature-scaled letter probabilities are the strongest cheap fix: on the base model they rank answers with AUROC 0.92–0.98. The question becomes whether RL can make the stated confidence as informative as what the model already holds internally, under shift |
 | 2026-10-26 | Keep word list v1. "Vest" and a lone "three quarter", which the model-based check flagged, are not added | In train and dev, "vest" appears in 22 redacted sleeve items and only 9 are sleeveless; a lone "three quarter" mostly describes trousers (1 of 5 is three-quarter sleeves). They are correlates, not statements |
 
 ## 3. Data
@@ -133,19 +134,20 @@ The model returns `{"choice": "<letter>", "confidence": <number from 0 to 1>}`. 
 
 ## 6. Conditions
 
-The core study compares five conditions.
+The core study compares five model conditions, M0 to M4, plus M2-logit, an inference-only baseline built on M1.
 
 | ID | Condition | Updated parameters |
 |---|---|---|
 | M0 | Qwen3-VL-4B-Instruct, prompted | None |
 | M1 | LoRA SFT on correct answers | Language-model LoRA |
 | M2 | M1 plus a Platt map on stated confidence | Two scalars |
+| M2-logit | M1's answer-letter probabilities with temperature scaling, the main cheap baseline | One scalar |
 | M3 | M1 plus GRPO, reward = correctness | Language-model LoRA |
 | M4 | M1 plus GRPO, reward = correctness − (confidence − correctness)² | Language-model LoRA |
 
-Two more comparators are reported separately:
-- **M2-logit** (Milestone 3): M1's answer-letter probabilities with temperature scaling. Inference only.
-- **M5** (Milestone 5): SFT on measured per-item success rates, sampled from M1, in the style of CalibSFT.
+M2-logit is inference only: it reads the probability M1 gives each offered letter where it writes its choice, and rescales those probabilities with one temperature fitted on the calibration split. It answers with M1's letter, so its accuracy is M1's.
+
+One more comparator is reported separately: **M5** (Milestone 5), SFT on measured per-item success rates, sampled from M1, in the style of CalibSFT.
 
 **SFT.** LoRA rank 16 on the language model's attention and MLP projections, with target modules named explicitly so the vision encoder stays untouched. The learning rate is picked from {5e-5, 1e-4, 2e-4} on dev. The loss covers the answer letter and the JSON syntax; the confidence value is masked out of the loss, because the catalog has no true confidence to copy. Format validity is checked on dev before the protocol is frozen.
 
@@ -170,9 +172,9 @@ Two more comparators are reported separately:
 - Evidence sensitivity: the drop in confidence from full to redacted text compared with the drop in accuracy, both on the items valid in both conditions, with the change in the invalid rate reported beside them.
 - Invalid-output rate next to every ranking metric (ECE, AUROC, risk–coverage), since an invalid output ranks like a wrong answer with the lowest confidence; GPU-hours and cost.
 
-**Statistics.** Differences between methods get 95% intervals from a paired bootstrap over product families (10,000 resamples). For M2, the Platt map is refitted in every draw on a resample of the calibration families, so its intervals include the uncertainty of fitting the map. Variation across training seeds is reported separately.
+**Statistics.** Differences between methods get 95% intervals from a paired bootstrap over product families (10,000 resamples). For M2 and M2-logit, the Platt map and the temperature are refitted in every draw on a resample of the calibration families, so their intervals include the uncertainty of fitting the map. Variation across training seeds is reported separately.
 
-**Primary comparison, fixed before any training.** M4 against M2 on the held-out test, redacted text, clean subset, pooled over both attributes. M4 counts as better if the 95% interval of the difference in the Brier score, with invalid outputs counted as loss 1, lies below zero, and the lower bound of the accuracy difference (invalid outputs counted as wrong) is above −1 point. Secondary comparisons: M4 against M3 (the effect of the reward) and M4 against M2-logit.
+**Primary comparison, fixed before any training.** M4 against M2-logit on the held-out test, redacted text, clean subset, pooled over both attributes. M4 counts as better if the 95% interval of the difference in the Brier score, with invalid outputs counted as loss 1, lies below zero, and the lower bound of the accuracy difference (invalid outputs counted as wrong) is above −1 point. Secondary comparisons: M4 against M3 (the effect of the reward) and M4 against M2 (the Platt map on stated confidence). Until 2026-10-26 the primary comparison was M4 against M2; the decision log gives the reason for the change, made before any training.
 
 All of these outcomes are reportable: RL wins under shift; the cheap fixes match it; every method degrades under shift; or confidence ignores the missing evidence.
 
@@ -193,8 +195,8 @@ Each milestone ends in something runnable or readable, and the core is delivered
 |---|---|---|
 | 1 | **Data foundation:** official download and images verified, ontology v0, tightened matcher with a 100-item hand check, frozen family splits, redaction v0, example builder, tests | Manifests (IDs and hashes) committed; tests pass for no family overlap, no held-out leakage, no label in the prompt, and alias mapping; audit v2 |
 | 2 | **End-to-end baseline:** Runpod pod and volume, vLLM inference with log-probabilities, strict parser, metrics module, M0 on dev in both conditions, text-only redaction check | M0 dev table; redaction check passes; invalid-output rate known and fixed if high; image budget frozen |
-| 3 | **Supervised result:** M1, M2 and M2-logit, full test evaluation of M0–M2 | Interim report `reports/phase1.md` with reliability and risk–coverage figures; M1's confidence shown to vary (not constant) |
-| 4 | **RL result:** GRPO smoke tests (reward unit tests, decoded rollouts), M3 and M4 with one seed each, full evaluation | Five-condition results table; zero-signal group share logged for each arm |
+| 3 | **Supervised result:** M1, M2 and M2-logit, full test evaluation of M0–M2 | Interim report `reports/phase1.md` with reliability and risk–coverage figures, and the distribution of M1's stated confidence (the base model states 0.95 on nearly every answer) |
+| 4 | **RL result:** GRPO smoke tests (reward unit tests, decoded rollouts), M3 and M4 with one seed each, full evaluation | Results table for M0–M4 and M2-logit; zero-signal group share logged for each arm |
 | 5 | **Depth:** three seeds for M3 and M4, M5, photo-swap test, 300 held-out items hand-labeled from photos blind to the catalog label, final write-up | Final report with intervals, seed spread and failure analysis |
 
 **Stop and rethink if:**
