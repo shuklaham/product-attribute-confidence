@@ -154,6 +154,13 @@ Each metric answers a different question, and a method can win on one while losi
 - 0 and 1 have no finite logit, so stated confidence is clipped to [0.005, 0.995] first. Models state confidence in steps of 0.01 or coarser, so a stated 1.0 is read as half a step above 0.99. The clip is fixed in advance because it matters: with many stated 1.0s it decides where that cluster sits on the logit axis, and the fit follows.
 - Temperature: the answer-letter probabilities become softmax(log-probabilities / t), with t chosen to minimize the negative log-likelihood of the correct letters by golden-section search. A t above 1 softens overconfident probabilities. The chosen letter never changes, so accuracy is unchanged.
 
+**Each group gets its own map.** The Platt map, the temperature and the threshold are fitted separately for each attribute and text condition. Neckline offers 9 options and sleeve length 4, and the model is far more accurate when the text states the answer. So one map shared across those groups would be wrong for each of them.
+
+**A fitting bug worth remembering.** The first Platt fit used plain Newton steps. It failed on exactly the input this project produces: every stated confidence at 0.95 while the true hit rate is far lower. From that start the sigmoid is almost flat, so the first step overshot and the fit ran away to 1.0.
+- **The fix:** start the intercept from its closed-form value, halve any step that would raise the loss, and use convexity to fall back to a = 0 when the best slope is negative.
+- **The checks:** tests now cover constant inputs far from the hit rate, plus a brute-force search of the same objective.
+- **The lesson:** test an optimizer on the inputs it will really see, not just on well-behaved random data.
+
 **Intervals.** Differences between methods come from a paired bootstrap over product families. Each resample draws families with replacement, keeps every row of a drawn family together, and scores both methods on the same draw. Colour variants are near-duplicates, so resampling single items would overstate the evidence and make the intervals too narrow. M2's Platt map and M2-logit's temperature are themselves estimates from a few hundred calibration items, so for those methods each draw also refits the map on a resample of the calibration families. A statistic that is undefined on some draw, such as AUROC on a draw with no wrong answers, stops the bootstrap with an error instead of quietly shrinking the interval.
 
 Code: `src/pac/metrics.py`, `src/pac/calibration.py`. Tests: `tests/test_metrics.py`, `tests/test_calibration.py`.
@@ -170,3 +177,23 @@ M2-logit needs the probability the model gives each option letter, not just the 
 - The parser also rejects a repeated key: JSON would keep the last value, while the letter probabilities are read where the first one was written.
 
 Code: `src/pac/inference.py`, `src/pac/evaluation.py`, `scripts/predict.py`. Tests: `tests/test_inference.py`.
+
+## 12. Training M1
+
+M1 is the base model plus a small trained add-on, a LoRA adapter.
+- **What changes:** rank-16 low-rank updates on the language model's attention and MLP projections, 252 modules in all. That is 33 million trainable parameters, under 1% of the model. The vision encoder is frozen; the training script lists every adapted module and refuses to run if any lies outside the language model.
+- **What the model sees:**
+  - Each training item appears once per pass over the data.
+  - A seeded coin flip per (family, attribute, pass) decides full or redacted text, so colour variants share a condition and every model gets the same draws.
+  - The answer options are reshuffled each pass, so the position of the right letter carries no signal: each letter is right about 1/9 of the time for neckline and 1/4 for sleeve length.
+- **What it learns:**
+  - The target is the JSON answer, in the layout the base model already writes.
+  - The loss covers the answer letter, the JSON punctuation and the end-of-turn token, but not the confidence number. Run against the real tokenizer, exactly the four tokens of "0.95" are left out.
+  - The catalog has no true confidence to copy, and copying any fixed number would only teach that number.
+- **Choosing the learning rate:** from 5e-5, 1e-4 and 2e-4, by a rule fixed before training: the highest accuracy on redacted dev, counting invalid outputs as wrong, then fewer invalid outputs, then the lower rate.
+- **Serving it:**
+  - vLLM loads the adapter directly. Loading without an error proves nothing, so a check ran the same prompts with and without the adapter, with prefix caching off.
+  - The adapter moved the letter log-probabilities by up to 6.6, while two runs of the base model differed by at most 0.375.
+- **A version detail:** transformers 5.19 needs `mm_token_type_ids`, which marks which tokens are image tokens, to build Qwen3-VL's position encoding. The training batches carry the processor's markers through.
+
+Code: `src/pac/sft.py`, `scripts/train_sft.py`, `scripts/predict.py`. Tests: `tests/test_sft.py`.
