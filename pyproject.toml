@@ -3,6 +3,7 @@ name = "product-attribute-confidence"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "numpy>=2.0",
     "pillow>=13.0.0",
     "pyyaml>=6.0.3",
     "streamlit>=1.66.1",
@@ -11,6 +12,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+]
+gpu = [
+    "vllm==0.32.0 ; sys_platform == 'linux'",
 ]
 
 [build-system]
@@ -22,3 +26,7 @@ packages = ["src/pac"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# The laptop (macOS) and the GPU pod and CI (Linux) are the only places this runs.
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
