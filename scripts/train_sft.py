@@ -49,6 +49,8 @@ class Collator:
         prompt_ids = encoded["input_ids"][0].tolist()
         return {
             "input_ids": prompt_ids + completion["input_ids"],
+            # Marks image tokens (1) for the multimodal position encoding; the answer is text (0).
+            "mm_token_type_ids": encoded["mm_token_type_ids"][0].tolist() + [0] * len(completion["input_ids"]),
             "labels": [-100] * len(prompt_ids) + completion_labels(completion["input_ids"],
                                                                   completion["offset_mapping"], span),
             "pixel_values": encoded["pixel_values"],
@@ -66,6 +68,7 @@ class Collator:
         return {
             "input_ids": padded("input_ids", pad),
             "labels": padded("labels", -100),
+            "mm_token_type_ids": padded("mm_token_type_ids", 0),
             "attention_mask": torch.tensor([[1] * len(i["input_ids"]) + [0] * (width - len(i["input_ids"]))
                                             for i in items]),
             "pixel_values": torch.cat([i["pixel_values"] for i in items]),
