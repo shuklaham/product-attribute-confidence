@@ -86,3 +86,97 @@ One entry per working session: what ran, what it cost, what it showed, and what 
 
 **Next**
 - GPU part of Milestone 2: pod and volume, upload examples and photos, a 16-item smoke run, M0 on dev in both conditions, and the text-only redaction check.
+
+## 2026-10-25: Independent review and data v1
+
+**Ran**
+- Two independent reviews of all work so far, one of the data pipeline and leakage, one of the evaluation and inference code. Every finding was reproduced before it was fixed.
+- Rebuilt the data as v1: photo hashes in `manifests/v1/photos.csv`, the manifests, the examples (`data/processed/v1`, with a build record), the audit and the CPU leak check.
+- Ran the review app headlessly in both modes. 130 tests pass.
+
+**Cost:** no GPU used. The Runpod account now has the laptop's SSH key registered; creating the network volume was refused because the balance is under $5.
+
+**Findings, data side**
+- **Duplicate listings crossed splits.** Some garments are listed twice under different IDs with no colour link. In v0, 246 groups of byte-identical photos spanned two splits, and 6–7% of seen-test items had the same photo and label in training. The held-out test was not affected.
+- **Statements survived redaction.**
+  - Rule 3 dropped a clause only if an attribute word was left, so "has adjustable straps" became "has adjustable".
+  - The hand-check fix had removed "armholes" from redaction along with matching.
+  - Misspellings, brand abbreviations (SS, HS, LS, FS, S/L, Sless) and title fragments ("Three Kurta") also survived.
+  - Measured with the v1 word list, 5.3% of held-out redacted sleeve items still contained a statement or cue, against 1.3% in the seen test. The audit could not see it, because it only checked the word list itself.
+- **The spot check was anchored.** The app showed Claude's verdict and pre-selected it, so 18 of 20 is a confirmation rate, not independent agreement.
+- **Garbled text.** Runs of mis-decoded characters in 37 listings made 16 prompts longer than the model context.
+- **Smaller issues:**
+  - The text check also read the variant name, which the model never sees; with the v1 word list it would change 223 checks.
+  - Families that mixed a kept and a dropped value were not treated as disagreeing.
+  - 30 roll-up exclusions had no "sleeve" or "cuff" near any roll-up phrase, and the rule missed 9 included items that the catalog's own field marks as roll-ups.
+  - 8 items reviewed earlier sit in test splits under v1.
+  - The plan's "all labeled items" test grid could not be built.
+
+**Findings, evaluation side**
+- **Merged runs.** The table script merged different models or splits into one row, and accepted unfinished runs.
+- **A wrong claim about invalid outputs.** The docs claimed an invalid output can never improve a score. In fact, replacing a confidently wrong answer with an invalid one improves the risk–coverage area, AUROC, ECE and the valid-only Brier score.
+- **Mismatched item sets.** Evidence sensitivity measured its two drops on different items.
+- **Smaller issues:**
+  - Duplicate JSON keys were accepted.
+  - The Platt fit depended on an unregistered clip and failed silently on degenerate input; the temperature fit failed silently on bad input.
+  - A bootstrap interval could silently turn NaN.
+  - A right answer without a letter confidence counted as an error in the letter-based area.
+- **Checked and sound:**
+  - The Platt and temperature fits match SciPy to 1e-15.
+  - AUROC, ECE and risk–coverage tie handling are correct.
+  - The vLLM 0.32.0 and transformers 5.19.0 calls are right, and so are the tokenizer claims.
+  - v0 manifests and examples rebuild byte for byte.
+  - Families, held-out isolation, the prompt's fields and the option order are sound.
+
+**Changed**
+- **Data v1:**
+  - Families also join byte-identical photos. 513 photo groups cover 1,120 products; 291 products changed split; families went from 12,452 to 11,881. No photo is in two splits.
+  - Redaction v1 drops whole clauses and covers the abbreviations, misspellings and cues above; titles lose the words that describe a mention.
+  - The text check reads only the title and description.
+  - Dropped values count in family disagreement.
+  - The roll-up rule needs "sleeve" or "cuff" nearby and also reads the catalog field.
+  - Garbled runs are removed, so the longest prompt is now 608 text tokens.
+  - Reviewed items in test splits are excluded from every test set.
+  - The test splits now include the items excluded only as label noise, marked `clean = false`.
+- **Redaction checks, v1:**
+  - No attribute word, phrase or cue survives outside a brand name in any evaluation item; 56 neckline items keep "Polo" inside a brand name.
+  - CPU leak check on dev: redacted neckline text scores 82% against a category guess of 71%. Redacted sleeve text scores 84% against 86%, but 61% against 46% in balanced accuracy.
+  - The words it relies on are product types, styling ("placket", "cuffs") and model measurements. Word list v1 is frozen.
+- **Included labels: 19,535.** Built items, clean:
+
+  | Split | Neckline | Sleeve length | Notes |
+  |---|---:|---:|---|
+  | Train | 3,280 | 4,437 | after the 1,500 cap; 4,693 and 6,944 before it |
+  | Dev | 710 | 1,063 | |
+  | Calibration, fitting half | 327 | 482 | |
+  | Calibration, threshold half | 409 | 564 | |
+  | Seen test | 667 | 1,020 | plus 101 noisy items |
+  | Held-out test | 1,232 | 1,424 | plus 197 noisy items |
+
+  Cowl neck now has 29 training labels, under the 30 needed, so like Square neck and Shirt collar it is offered but never scored.
+- **Review app:**
+  - Claude's verdict stays hidden until the author saves theirs, and nothing is pre-selected.
+  - Verdicts record whether they were blind.
+  - Test splits never appear.
+- **Evaluation code:**
+  - Each prediction file is one run, and rows are keyed by run, split and subset.
+  - Evidence sensitivity joins the two conditions and uses one item set.
+  - The parser rejects repeated keys.
+  - The fits refuse bad input.
+  - `predict.py` checks every prompt's length before using the GPU, and its run record hashes the photos too.
+- **Protocol, fixed before any training:**
+  - The primary comparison uses the Brier score with invalid outputs counted as loss 1, pooled over both attributes.
+  - M2's map is refitted in every bootstrap draw.
+  - Stated confidence is clipped to [0.005, 0.995] before the Platt fit.
+
+**Corrections to earlier entries**
+- **Roll-up rule:** "removes 590 sleeve labels" counted labels already excluded for other reasons. 536 of the 590 were otherwise included.
+- **Hand check:** of the 43 sampled sleeve contradictions, 40 were genuine. Roll-up sleeves came up in 15 of them, 14 of which Claude could not decide from the photo. Cap versus sleeveless cases were 7, not 4.
+- **Leak check:** re-running it on v0 gives a sleeve balanced accuracy of 63%, not 62%.
+- **Redaction residual:** "no label phrase survives" was true only outside brand names.
+- **Photos:** not every photo is 1800×2400; 4,562 are 1080×1440.
+
+**Next**
+- Add Runpod credit (author), then the GPU part of Milestone 2 on the v1 examples.
+- A blind review of the remaining hand-check items in the app (author), to measure agreement with Claude independently.
+- Before Milestone 4: decide the RL data mix, since the training cap changes the label mix that RL calibrates against.

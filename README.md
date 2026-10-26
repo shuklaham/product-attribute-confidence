@@ -11,24 +11,25 @@ cp .env.example .env    # then paste a Kaggle API token; .env is gitignored
 
 ## Data pipeline
 
-Raw data, photos and generated examples live under `data/` and are never committed. The manifests in `manifests/v0/` hold product IDs, splits and label decisions only, with hashes of the source data and the label set.
+Raw data, photos and generated examples live under `data/` and are never committed. The manifests in `manifests/v1/` hold product IDs, splits, label decisions and photo hashes only, with hashes of the source data, the label set and the review annotations. `manifests/v0/` is the first frozen version, kept for reference; v1 followed an independent review (see `docs/log.md`).
 
 ```
 # 1. Official dataset (about 25 GB) and its product records
 uv run --env-file .env --with kaggle kaggle datasets download paramaggarwal/fashion-product-images-dataset -p data/raw/kaggle
 unzip -q -j data/raw/kaggle/fashion-product-images-dataset.zip "fashion-dataset/styles/*" -d data/raw/kaggle/styles
 
-# 2. Splits and label decisions, then photos (checked and resized to 512 px), then the decisions again with the photo rule
-uv run python -I scripts/build_manifests.py data/raw/kaggle/styles manifests/v0
-uv run python -I scripts/prepare_images.py data/raw/kaggle/fashion-product-images-dataset.zip manifests/v0 data/images reports/image_check.md
-uv run python -I scripts/build_manifests.py data/raw/kaggle/styles manifests/v0
+# 2. Splits and label decisions, then photos (checked, hashed, resized to at most 512 px), then the decisions again
+#    with the photo rule and with byte-identical photos joined into one family
+uv run python -I scripts/build_manifests.py data/raw/kaggle/styles manifests/v1
+uv run python -I scripts/prepare_images.py data/raw/kaggle/fashion-product-images-dataset.zip manifests/v1 data/images reports/image_check.md
+uv run python -I scripts/build_manifests.py data/raw/kaggle/styles manifests/v1
 
 # 3. Model-facing examples in both text conditions
-uv run python -I scripts/build_examples.py data/raw/kaggle/styles manifests/v0 data/processed/v0
+uv run python -I scripts/build_examples.py data/raw/kaggle/styles manifests/v1 data/processed/v1
 
 # 4. Reports: data audit, and the CPU text-only leak check on train and dev
-uv run python -I scripts/audit.py data/raw/kaggle/styles reports/data_audit.md manifests/v0/photos.csv
-uv run python -I scripts/leak_check.py data/processed/v0
+uv run python -I scripts/audit.py data/raw/kaggle/styles reports/data_audit.md manifests/v1/photos.csv
+uv run python -I scripts/leak_check.py data/processed/v1
 ```
 
 The label set, aliases and redaction phrases are in [configs/ontology.yaml](configs/ontology.yaml). Changing it changes its hash, and `build_examples.py` refuses to run until the manifests are rebuilt.
@@ -42,13 +43,13 @@ Inference runs on a Linux GPU pod; the tables can be made anywhere.
 uv sync --group gpu
 
 # A smoke test, then the base model on dev in both text conditions, then the text-only redaction check
-uv run --group gpu python -I scripts/predict.py data/processed/v0/dev.jsonl data/images artifacts/m0_dev_smoke --limit 16
-uv run --group gpu python -I scripts/predict.py data/processed/v0/dev.jsonl data/images artifacts/m0_dev
-uv run --group gpu python -I scripts/predict.py data/processed/v0/dev.jsonl data/images artifacts/m0_dev_text_only --mode text_only --condition redacted
+uv run --group gpu python -I scripts/predict.py data/processed/v1/dev.jsonl data/images artifacts/m0_dev_smoke --limit 16
+uv run --group gpu python -I scripts/predict.py data/processed/v1/dev.jsonl data/images artifacts/m0_dev
+uv run --group gpu python -I scripts/predict.py data/processed/v1/dev.jsonl data/images artifacts/m0_dev_text_only --mode text_only --condition redacted
 
 # Metric tables
 uv run python -I scripts/evaluate.py artifacts/m0_dev/predictions.jsonl artifacts/m0_dev_text_only/predictions.jsonl \
-    --train data/processed/v0/train.jsonl --out reports/m0_dev.md
+    --train data/processed/v1/train.jsonl --out reports/m0_dev.md
 ```
 
 Each run writes `predictions.jsonl` and a run record (`run.json`: git commit, model revision, package versions, GPU, time) under `artifacts/`, which is gitignored. Only the aggregated tables in `reports/` are committed.
@@ -59,7 +60,7 @@ Each run writes `predictions.jsonl` and a run record (`run.json`: git commit, mo
 uv run streamlit run app/review.py
 ```
 
-Browse products by split, category, label and decision, compare full and redacted text next to the photo, and work through the frozen hand-check queue of sampled contradictions between descriptions and catalog labels. Verdicts are saved to `annotations/conflict_check.csv` with the reviewer recorded, so Claude's verdicts and a person's can be compared.
+Browse products by split, category, label and decision, compare full and redacted text next to the photo, and work through the frozen hand-check queue of sampled contradictions between descriptions and catalog labels. Verdicts are saved to `annotations/conflict_check.csv` with the reviewer recorded, so Claude's verdicts and a person's can be compared. Claude's verdict on an item stays hidden until you save yours, and nothing is pre-selected, so your verdicts are blind. Test splits never appear in the app.
 
 ## Tests
 
