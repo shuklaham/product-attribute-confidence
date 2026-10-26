@@ -84,6 +84,13 @@ def test_aurc_ranks_invalid_outputs_last_as_errors():
     assert m.aurc([0.9, 0.5], [0, 1]) == pytest.approx(0.75)
 
 
+def test_risk_curve_is_flat_for_one_stated_value_and_averages_to_the_area():
+    coverage, risk = m.risk_curve([0.95] * 10, [1] * 8 + [0] * 2)
+    assert coverage[-1] == 1.0 and np.allclose(risk, 0.2)
+    q, c = [0.9, 0.8, 0.8, None], [1, 0, 1, 0]
+    assert np.mean(m.risk_curve(q, c)[1]) == pytest.approx(m.aurc(q, c))
+
+
 def test_aurc_counts_a_right_answer_without_confidence_as_right():
     # Letter probabilities can be missing for a valid, correct answer; it ranks last but is not an error.
     assert m.aurc([0.9, None], [1, 1]) == 0.0

@@ -135,16 +135,13 @@ def risk_coverage(confidence, correct) -> list[CoveragePoint]:
             for t, a, w in zip(values[::-1], accepted, wrong)]
 
 
-def aurc(confidence, correct) -> float:
-    """Area under the risk-coverage curve: the mean, over k = 1..n, of the error rate among the top k items.
+def risk_curve(confidence, correct) -> tuple[np.ndarray, np.ndarray]:
+    """Coverage k/n and the expected error rate among the top k items, for every k from 1 to n.
 
-    Items are ranked by confidence. Items without one, such as invalid outputs, can never be
-    auto-filled, so they rank last, where their actual correctness counts; an invalid output is
-    always wrong. An invalid output therefore scores like a wrong answer given the lowest
-    confidence: no better than an honest low-confidence answer, but better than a confidently
-    wrong one. So the invalid rate must be reported next to this area. Tied confidences have no
-    order, so the result is the expected value over a random order within each tie, which
-    interpolates the cumulative error count linearly across the tie. Lower is better.
+    This is the curve the risk-coverage area averages: items ranked by confidence, items without
+    one last with their actual correctness, and ties in a random order, so the cumulative error
+    count is interpolated linearly across each tie. A model that states one value for every item
+    therefore has a flat curve at its overall error rate: auto-filling is then a random pick.
     """
     q, c = _confidence(confidence), _correct(correct)
     points = risk_coverage(q, c)
@@ -153,7 +150,21 @@ def aurc(confidence, correct) -> float:
     accepted.append(len(q))
     errors.append(errors[-1] + float((1 - c[np.isnan(q)]).sum()))
     k = np.arange(1, len(q) + 1)
-    return float(np.mean(np.interp(k, accepted, errors) / k))
+    return k / len(q), np.interp(k, accepted, errors) / k
+
+
+def aurc(confidence, correct) -> float:
+    """Area under the risk-coverage curve: the mean, over k = 1..n, of the error rate among the top k items.
+
+    Items are ranked by confidence. Items without one, such as invalid outputs, can never be
+    auto-filled, so they rank last, where their actual correctness counts; an invalid output is
+    always wrong. An invalid output therefore scores like a wrong answer given the lowest
+    confidence: no better than an honest low-confidence answer, but better than a confidently
+    wrong one. So the invalid rate must be reported next to this area. Tied confidences have no
+    order, so the result is the expected value over a random order within each tie (see
+    risk_curve). Lower is better.
+    """
+    return float(np.mean(risk_curve(confidence, correct)[1]))
 
 
 def select_threshold(confidence, correct, max_risk: float = 0.05) -> float:
