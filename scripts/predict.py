@@ -8,7 +8,10 @@ path training uses, so evaluation and training see identical prompt strings.
 Usage:
     uv run --group gpu python -I scripts/predict.py <examples.jsonl> <image_dir> <out_dir>
         [--mode photo_text|text_only|photo_only] [--condition full|redacted]
-        [--attribute neckline|sleeve_length] [--limit N]
+        [--attribute neckline|sleeve_length] [--limit N] [--lora <adapter_dir>]
+
+With --lora, the base model runs with a trained LoRA adapter (scripts/train_sft.py), loaded by
+vLLM itself; the run record holds the adapter's hash.
 """
 
 import argparse
@@ -54,6 +57,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--revision", default=REVISION)
+    parser.add_argument("--lora", type=Path)
     args = parser.parse_args()
 
     with open(args.examples, encoding="utf-8") as f:
@@ -84,6 +88,12 @@ def main() -> None:
         raise SystemExit(f"{len(too_long)} prompts do not fit in {MAX_MODEL_LEN} tokens, for example {too_long[:5]}")
 
     engine = {"max_model_len": MAX_MODEL_LEN, "limit_mm_per_prompt": {"image": 1}, "seed": SEED}
+    adapter = None
+    if args.lora:
+        from vllm.lora.request import LoRARequest
+
+        engine |= {"enable_lora": True, "max_lora_rank": 16}
+        adapter = LoRARequest("adapter", 1, str(args.lora))
     llm = LLM(model=args.model, revision=args.revision, **engine)
     letter_ids = letter_token_ids(lambda s: tokenizer.encode(s, add_special_tokens=False))
     sampling = {"temperature": 0.0, "max_tokens": MAX_TOKENS, "seed": SEED}
@@ -104,7 +114,7 @@ def main() -> None:
                     with Image.open(path) as image:
                         request["multi_modal_data"] = {"image": image.convert("RGB")}
                 requests.append(request)
-            for example, result in zip(chunk, llm.generate(requests, params, use_tqdm=False)):
+            for example, result in zip(chunk, llm.generate(requests, params, use_tqdm=False, lora_request=adapter)):
                 generated = result.outputs[0]
                 pieces = [tokenizer.decode([t]) for t in generated.token_ids]
                 logprobs = [{t: lp.logprob for t, lp in position.items()} for position in generated.logprobs]
@@ -128,7 +138,10 @@ def main() -> None:
         "filters": {"mode": args.mode, "condition": args.condition, "attribute": args.attribute,
                     "limit": args.limit},
         "n": len(examples),
-        "model": {"name": args.model, "revision": args.revision},
+        "model": {"name": args.model, "revision": args.revision,
+                  "lora": None if not args.lora else {
+                      "path": str(args.lora),
+                      "sha256": hashlib.sha256((args.lora / "adapter_model.safetensors").read_bytes()).hexdigest()}},
         "engine": engine,
         "sampling": sampling,
         "letter_token_ids": letter_ids,
