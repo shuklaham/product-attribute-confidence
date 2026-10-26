@@ -8,11 +8,15 @@ of the calibration split and then frozen.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
 
-EPSILON = 1e-4
+# 0 and 1 have no finite logit, so stated confidence is clipped to [EPSILON, 1 - EPSILON]. Models
+# state confidence in steps of 0.01 or coarser, so a stated 1.0 is read as 0.995, half a step above
+# 0.99, and 0.0 as 0.005. Fixed before any model was trained; values beyond the clip tie.
+EPSILON = 0.005
 
 
 def logit(q) -> np.ndarray:
@@ -34,16 +38,33 @@ class PlattMap:
         return sigmoid(self.a * logit(confidence) + self.b)
 
 
+def _fit_intercept(x: np.ndarray, y: np.ndarray, a: float, l2: float, iterations: int = 100) -> float:
+    """The b that minimises cross-entropy for a fixed slope a, by Newton's method."""
+    b = 0.0
+    for _ in range(iterations):
+        p = sigmoid(a * x + b)
+        step = (np.sum(p - y) + l2 * b) / (np.sum(p * (1 - p)) + l2)
+        b -= step
+        if abs(step) < 1e-10:
+            break
+    return float(b)
+
+
 def fit_platt(confidence, correct, l2: float = 1e-3, iterations: int = 100) -> PlattMap:
     """Fit a and b by minimising binary cross-entropy with Newton's method, keeping a >= 0.
 
     A small L2 penalty keeps the fit finite when every answer is right or every answer is
     wrong. If the unconstrained step would make a negative, a stays at 0 and only b is fitted:
-    the map then returns the base rate for every confidence.
+    the map then returns the base rate for every confidence. When every stated confidence is the
+    same, the data say nothing about the slope, so a stays at 1 and only the level moves.
     """
     q, c = np.asarray(confidence, dtype=float), np.asarray(correct, dtype=float)
     valid = ~np.isnan(q)
+    if not valid.any():
+        raise ValueError("no valid outputs to fit a Platt map on")
     x, y = logit(q[valid]), c[valid]
+    if np.ptp(x) == 0:
+        return PlattMap(1.0, _fit_intercept(x, y, 1.0, l2))
     a, b = 1.0, 0.0
     for _ in range(iterations):
         p = sigmoid(a * x + b)
@@ -78,11 +99,14 @@ class Temperature:
 def fit_temperature(logprobs, answers, low: float = 0.05, high: float = 20.0, iterations: int = 100) -> Temperature:
     """The temperature that minimises the negative log-likelihood of the correct options.
 
-    logprobs has one row per item and one column per offered option; answers holds each item's
-    correct option index. Golden-section search on log t, which suits this one-dimensional,
-    single-dip objective.
+    logprobs has one row per item and one column per offered option, so each attribute is
+    fitted on its own; answers holds each item's correct option index. Golden-section search
+    on log t, which suits this one-dimensional, single-dip objective. Non-finite inputs raise
+    an error, and a result at a search bound gives a warning.
     """
     z, y = np.asarray(logprobs, dtype=float), np.asarray(answers, dtype=int)
+    if z.ndim != 2 or len(z) != len(y) or not np.isfinite(z).all() or y.min() < 0 or y.max() >= z.shape[1]:
+        raise ValueError("logprobs must be a finite 2-D array with one row per answer, and answers valid indices")
     rows = np.arange(len(y))
 
     def nll(log_t: float) -> float:
@@ -97,4 +121,7 @@ def fit_temperature(logprobs, answers, low: float = 0.05, high: float = 20.0, it
             hi = d
         else:
             lo = c
-    return Temperature(float(np.exp((lo + hi) / 2)))
+    t = float(np.exp((lo + hi) / 2))
+    if min(t / low, high / t) < 1.01:
+        warnings.warn(f"the fitted temperature {t:.3g} is at the edge of the search range", stacklevel=2)
+    return Temperature(t)

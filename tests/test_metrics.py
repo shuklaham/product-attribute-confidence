@@ -78,8 +78,15 @@ def test_aurc_averages_over_the_order_of_tied_items():
 def test_aurc_ranks_invalid_outputs_last_as_errors():
     # The invalid output is wrong and ranked after both valid ones: risks 0, 1/2, 2/3.
     assert m.aurc([0.9, 0.5, None], [1, 0, 0]) == pytest.approx((0 + 1 / 2 + 2 / 3) / 3)
-    # Turning a wrong low-confidence answer into an invalid output leaves the area unchanged.
-    assert m.aurc([0.9, None], [1, 0]) == pytest.approx(m.aurc([0.9, 0.1], [1, 0]))
+    # An invalid output scores exactly like a wrong answer with the lowest confidence, so it beats
+    # a confidently wrong answer; that is why the invalid rate is reported beside the area.
+    assert m.aurc([None, 0.5], [0, 1]) == pytest.approx(m.aurc([0.0, 0.5], [0, 1])) == pytest.approx(0.25)
+    assert m.aurc([0.9, 0.5], [0, 1]) == pytest.approx(0.75)
+
+
+def test_aurc_counts_a_right_answer_without_confidence_as_right():
+    # Letter probabilities can be missing for a valid, correct answer; it ranks last but is not an error.
+    assert m.aurc([0.9, None], [1, 1]) == 0.0
 
 
 def test_threshold_gives_the_most_coverage_within_the_risk_target():
@@ -94,9 +101,14 @@ def test_frozen_threshold_keeps_invalid_outputs_in_the_denominator():
     assert m.at_threshold([0.95, 0.6, None, 0.97], [1, 1, 0, 0], threshold=0.9) == (0.5, 0.5, 2)
 
 
-def test_confidence_and_accuracy_drop():
+def test_confidence_and_accuracy_drop_use_the_same_items():
     drop = m.confidence_and_accuracy_drop([0.9, 0.9], [1, 1], [0.8, 0.6], [1, 0])
     assert drop == pytest.approx((0.2, 0.5))
+    # The third item is invalid under redaction, so it leaves both drops.
+    drop = m.confidence_and_accuracy_drop([0.9, 0.9, 0.9], [1, 1, 1], [0.8, 0.6, None], [1, 0, 0])
+    assert drop == pytest.approx((0.2, 0.5))
+    with pytest.raises(ValueError):
+        m.confidence_and_accuracy_drop([0.9], [1], [0.8, 0.6], [1, 0])
 
 
 def test_family_bootstrap_draws_whole_families_and_is_reproducible():
@@ -114,6 +126,12 @@ def test_family_bootstrap_draws_whole_families_and_is_reproducible():
     first = m.family_bootstrap(mean, families, resamples=500, seed=3)
     assert first == m.family_bootstrap(mean, families, resamples=500, seed=3)
     assert first[1] <= first[0] <= first[2]
+
+
+def test_family_bootstrap_refuses_undefined_statistics():
+    q, c = np.array([0.9, 0.8, 0.7]), np.array([1, 1, 0])
+    with pytest.raises(ValueError, match="undefined"):
+        m.family_bootstrap(lambda rows: m.auroc(q[rows], c[rows]), [1, 2, 3], resamples=200)
 
 
 def test_paired_difference_of_identical_methods_is_exactly_zero():

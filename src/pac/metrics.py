@@ -138,18 +138,20 @@ def risk_coverage(confidence, correct) -> list[CoveragePoint]:
 def aurc(confidence, correct) -> float:
     """Area under the risk-coverage curve: the mean, over k = 1..n, of the error rate among the top k items.
 
-    Items are ranked by confidence, with invalid outputs last and counted as wrong, so emitting
-    an invalid output on a hard item never improves the area. Tied confidences have no order, so
-    the result is the expected value over a random order within each tie, which interpolates the
-    cumulative error count linearly across the tie. Lower is better.
+    Items are ranked by confidence. Items without one, such as invalid outputs, can never be
+    auto-filled, so they rank last, where their actual correctness counts; an invalid output is
+    always wrong. An invalid output therefore scores like a wrong answer given the lowest
+    confidence: no better than an honest low-confidence answer, but better than a confidently
+    wrong one. So the invalid rate must be reported next to this area. Tied confidences have no
+    order, so the result is the expected value over a random order within each tie, which
+    interpolates the cumulative error count linearly across the tie. Lower is better.
     """
     q, c = _confidence(confidence), _correct(correct)
     points = risk_coverage(q, c)
     accepted = [0] + [p.accepted for p in points]
     errors = [0.0] + [p.risk * p.accepted for p in points]
-    invalid = len(q) - accepted[-1]
     accepted.append(len(q))
-    errors.append(errors[-1] + invalid)
+    errors.append(errors[-1] + float((1 - c[np.isnan(q)]).sum()))
     k = np.arange(1, len(q) + 1)
     return float(np.mean(np.interp(k, accepted, errors) / k))
 
@@ -175,15 +177,19 @@ def at_threshold(confidence, correct, threshold: float) -> tuple[float, float, i
 
 def confidence_and_accuracy_drop(full_confidence, full_correct, redacted_confidence,
                                  redacted_correct) -> tuple[float, float]:
-    """For the same items under both text conditions: the fall in mean confidence and the fall in accuracy.
+    """The fall in mean confidence and the fall in accuracy from full to redacted text.
 
-    When the text stops stating the answer, a well-calibrated model lowers its confidence about
-    as much as its accuracy falls. Mean confidence uses items that are valid in both conditions.
+    Row i of every input must be the same item. When the text stops stating the answer, a
+    well-calibrated model lowers its confidence about as much as its accuracy falls. Both drops
+    use the same items, those valid in both conditions; report the change in the invalid rate
+    separately.
     """
     qf, qr = _confidence(full_confidence), _confidence(redacted_confidence)
+    cf, cr = _correct(full_correct), _correct(redacted_correct)
+    if not len(qf) == len(qr) == len(cf) == len(cr):
+        raise ValueError("the two conditions must cover the same items, row for row")
     both = ~np.isnan(qf) & ~np.isnan(qr)
-    confidence_drop = float(qf[both].mean() - qr[both].mean())
-    return confidence_drop, accuracy(full_correct) - accuracy(redacted_correct)
+    return float(qf[both].mean() - qr[both].mean()), float(cf[both].mean() - cr[both].mean())
 
 
 def family_bootstrap(statistic: Callable[[np.ndarray], float], families: Sequence, resamples: int = 10_000,
@@ -193,7 +199,8 @@ def family_bootstrap(statistic: Callable[[np.ndarray], float], families: Sequenc
     statistic receives row indices, with repeats, and computes its value on those rows. Every
     row of a family is drawn together, so colour variants never count as independent evidence.
     For a paired difference between two methods, compute both methods on the same rows inside
-    the statistic and return the difference.
+    the statistic and return the difference. A statistic that is undefined on some resamples
+    (NaN) raises an error rather than giving an interval from the remaining draws.
     """
     _, family_index = np.unique(np.asarray([str(f) for f in families]), return_inverse=True)
     n_families = int(family_index.max()) + 1
@@ -203,5 +210,8 @@ def family_bootstrap(statistic: Callable[[np.ndarray], float], families: Sequenc
     for i in range(resamples):
         counts = np.bincount(rng.integers(0, n_families, n_families), minlength=n_families)
         draws[i] = statistic(np.repeat(rows, counts[family_index]))
+    undefined = int(np.isnan(draws).sum())
+    if undefined:
+        raise ValueError(f"the statistic is undefined (NaN) in {undefined} of {resamples} resamples")
     low, high = np.quantile(draws, [(1 - level) / 2, (1 + level) / 2])
     return float(statistic(rows)), float(low), float(high)

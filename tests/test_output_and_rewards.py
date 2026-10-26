@@ -25,6 +25,7 @@ def test_valid_outputs(text):
     ('{"choice": "B", "confidence": true}', "confidence_not_a_number"),
     ('{"choice": "B", "confidence": 1.2}', "confidence_out_of_range"),
     ('{"choice": "B", "confidence": NaN}', "confidence_out_of_range"),
+    ('{"choice": "A", "choice": "B", "confidence": 0.8}', "duplicate_keys"),
 ])
 def test_invalid_outputs_are_rejected_not_repaired(text, error):
     parsed = parse_output(text, LETTERS)
@@ -35,6 +36,12 @@ def test_reward_values_from_the_plan():
     assert calibration_reward(True, 0.90) == pytest.approx(0.99)
     assert calibration_reward(False, 0.98) == pytest.approx(-0.9604)
     assert calibration_reward(False, 0.52) == pytest.approx(-0.2704)
+
+
+def test_letters_must_not_be_one_string():
+    # "AB" would count as an offered letter if the letters were the string "ABCD".
+    with pytest.raises(TypeError):
+        parse_output('{"choice": "AB", "confidence": 0.8}', "ABCD")
 
 
 def test_both_conditions_give_the_same_invalid_penalty():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Sequence
+from collections.abc import Collection
 from dataclasses import dataclass
 
 
@@ -19,10 +19,28 @@ class Parsed:
         return self.error is None
 
 
-def parse_output(text: str, letters: Sequence[str]) -> Parsed:
-    """Accept exactly {"choice": <offered letter>, "confidence": <finite number in [0, 1]>}."""
+class _DuplicateKey(ValueError):
+    pass
+
+
+def _unique_keys(pairs: list[tuple[str, object]]) -> dict:
+    if len({key for key, _ in pairs}) != len(pairs):
+        raise _DuplicateKey
+    return dict(pairs)
+
+
+def parse_output(text: str, letters: Collection[str]) -> Parsed:
+    """Accept exactly {"choice": <offered letter>, "confidence": <finite number in [0, 1]>}.
+
+    A repeated key is invalid: JSON would keep the last value, while the letter probabilities
+    are read where the first one was written.
+    """
+    if isinstance(letters, str):
+        raise TypeError("letters must be a collection of option letters, not one string")
     try:
-        obj = json.loads(text.strip())
+        obj = json.loads(text.strip(), object_pairs_hook=_unique_keys)
+    except _DuplicateKey:
+        return Parsed(None, None, "duplicate_keys")
     except (json.JSONDecodeError, AttributeError):
         return Parsed(None, None, "malformed_json")
     if not isinstance(obj, dict):
