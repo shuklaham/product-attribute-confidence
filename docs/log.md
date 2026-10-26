@@ -1,0 +1,65 @@
+# Run log
+
+One entry per working session: what ran, what it cost, what it showed, and what changed.
+
+## 2026-10-25: Milestone 1, data foundation
+
+**Ran**
+- Downloaded the official Kaggle dataset (24.8 GB) and extracted its 44,446 product records.
+- Built ontology v0, the `pac` library, the frozen v0 manifests, model-facing examples in both text conditions, the v2 audit, and the CPU leak check.
+- Checked and resized photos: 15,709 of 15,712 in-scope products have a photo; 3 are missing from the zip, none are unreadable.
+- 64 tests pass.
+
+**Cost:** no GPU used.
+
+**Findings**
+- The official records are byte-identical to the GitHub mirror used for the first audit (source fingerprint `f1352f4f7be4`), so earlier numbers stand.
+- Bug fixed: brand masking matched inside words (the brand "Lee" inside "sleeves"), which hid sleeve phrases from redaction and from label matching. Brands now match whole words only, with a regression test.
+- Tightening the phrase matcher changed the label-noise estimate. Most earlier "contradictions" in Dresses and Nightdress were strap phrases and the "U.S. Polo" brand. The neckline rate is still 25% for Tops and 26% for Kurtis, against 2% for T-shirts and 4% for Kurtas.
+- Included labels: 20,068.
+  - Neckline: 4,704 train, 714 dev, 664 seen test, 1,234 held-out test.
+  - Sleeve length: 7,304 train, 1,111 dev, 1,058 seen test, 1,449 held-out test.
+  - Training caps of 1,500 per (category, label) cell then apply when examples are built.
+- No attribute word or label phrase survives redaction in any evaluation item.
+- Leak check on dev: redacted text still beats the category guess (neckline 81% against 70%; sleeve balanced accuracy 62% against 46%). The words it relies on are brands, fabrics and styling, not statements of the attribute, after adding "crew", strap words, "armhole" and "mid-arm". Word list v0 is frozen.
+
+**Changed**
+- Plan: refined the redaction check and recorded the photo rule (decision log, 2026-10-25).
+
+**Next**
+- Hand check of 100 sampled contradictions in the review app.
+- Milestone 2: Runpod pod and volume, vLLM inference, metrics, M0 on dev.
+
+## 2026-10-25: Hand check of description–label contradictions
+
+**Ran**
+- Drew a frozen sample of 100 contradictions from training-side splits (`annotations/hand_check_queue_v0.csv`). The test splits stay unseen.
+- `scripts/review_queue.py` built a text sheet and 17 photo contact sheets. Claude read every description and looked at every photo.
+
+**Cost:** no GPU used.
+
+**Findings**
+- Text half, the phrase matcher's precision: 95 of 100 contradictions are genuine. The 5 misreads were "spread collar" on a polo jersey, a two-piece set with a sleeveless inner layer, "armholes" on a sleeved top, "deep round neck" (a scoop), and "three quarter pants". Four patterns were fixed, with regression tests.
+- Photo half, Claude's verdicts on the 95 genuine contradictions:
+  - The description is wrong in 37.
+  - The catalog label is wrong in 29.
+  - 29 can't be told from the photo, 14 of them roll-up sleeves.
+- Both sources err, so excluding contradictions is safer than trusting either one.
+- The author had reviewed 16 contradictions in the app before the queue was rebuilt. Two overlap the new sample: one agrees, and one is a roll-up sleeve that the author labeled by construction (long) and Claude marked "Can't tell".
+- After the pattern fixes, 26 more labels are included (20,094 in total). Redaction still leaves no label phrase in any evaluation item. None of the 7 test items the author inspected re-enters a test set; all remain excluded as genuine contradictions.
+
+**Decision:** products whose text describes roll-up sleeves are excluded from the sleeve-length task in every split.
+- The rule removes 590 sleeve labels: 559 in seen categories and 31 held-out.
+- Included labels: 19,558.
+- Redaction still leaves no label phrase in any evaluation item.
+- The text rule catches 8 of the 14 roll-ups in the hand check. The rest show only in the photo and remain as label noise.
+
+**Spot check, by the author.** The sample was 20 of Claude's decisive verdicts: the first 10 "Description is wrong" and the first 10 "Catalog label is wrong" calls, in queue order.
+- Agreement: 18 of 20, or 90%, with a 95% Wilson interval of 70% to 97%.
+- "Description is wrong": 10 of 10. "Catalog label is wrong": 8 of 10.
+- Both disagreements are round versus boat necklines, where Claude called a wide neckline boat and the author called it round.
+- Across all 26 queued items the author reviewed, they agree on 22.
+- Claude's verdicts are reported as an AI review checked against the author at this rate.
+
+**Next**
+- Milestone 2.
