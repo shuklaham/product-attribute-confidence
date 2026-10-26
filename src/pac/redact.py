@@ -1,10 +1,12 @@
 """Remove attribute evidence from product text for the redacted condition.
 
 Rule 1. The label is never an input, so the output cannot depend on the answer.
-Rule 2. The phrases of every label of the attribute are removed, dropped labels included.
-Rule 3. A clause that still mentions the attribute after phrase removal is dropped whole, so
-        no gap shows what was there. The title and the leading noun phrase only lose the
-        attribute words, because dropping them would also drop the product type.
+Rule 2. The phrases of every label of the attribute are removed, dropped labels included, along
+        with the attribute's redaction cues.
+Rule 3. A clause that names a label, contains a cue or mentions the attribute is dropped whole,
+        so no gap shows what was there. The title and the leading noun phrase cannot be dropped
+        without losing the product type, so there each mention is removed together with the
+        words that describe it.
 Rule 4. The brand name is protected.
 """
 
@@ -20,16 +22,40 @@ _CLAUSE_START = re.compile(r"\s+(?=(?:and|with|has|having|featuring)\b)", re.IGN
 _LEADING_CONNECTOR = re.compile(r"^(?:and|with)\s+", re.IGNORECASE)
 _FILLER = frozenset("a an the and with has having featuring it its is are comes of in on at to".split())
 _WORD = re.compile(r"[\w%/'-]+")
+_TOKEN = re.compile(r"\S+")
+_EDGE = re.compile(r"^\W+|\W+$")
+MODIFIER_REACH = 3
+
+
+def _mentions(text: str, attribute: Attribute) -> bool:
+    return bool(attribute.attribute_words.search(text)) or any(p.search(text) for p in attribute.redaction_patterns)
 
 
 def _strip_phrases(text: str, attribute: Attribute) -> str:
-    for pattern in attribute.all_patterns:
+    for pattern in attribute.redaction_patterns:
         text = pattern.sub(" ", text)
     return text
 
 
 def _clean_head(text: str, attribute: Attribute) -> str:
-    return attribute.head_fallback.sub(" ", _strip_phrases(text, attribute))
+    """Remove label phrases and cues, then each remaining mention with the words that describe it.
+
+    A mention takes with it the words before it back to the earliest describing word within
+    three words ("Three Fourth Sleeve", "Round Red Neck"), or else the one word before it. The
+    brand placeholder is never removed.
+    """
+    tokens = _TOKEN.findall(_strip_phrases(text, attribute))
+    drop = set()
+    for i, token in enumerate(tokens):
+        if not attribute.attribute_words.search(token):
+            continue
+        start = max(i - 1, 0)
+        for j in range(max(i - MODIFIER_REACH, 0), i):
+            if attribute.head_modifiers.fullmatch(_EDGE.sub("", tokens[j])):
+                start = j
+                break
+        drop.update(k for k in range(start, i + 1) if BRAND_TOKEN not in tokens[k])
+    return " ".join(t for k, t in enumerate(tokens) if k not in drop)
 
 
 def _is_filler(text: str) -> bool:
@@ -59,8 +85,11 @@ def _restore(text: str, original: str | None) -> str:
 def _redact_segment(body: str, attribute: Attribute, head: bool) -> str:
     kept, dropped_before = [], False
     for position, piece in enumerate(_CLAUSE_START.split(body.strip())):
-        piece = _clean_head(piece, attribute) if head and position == 0 else _strip_phrases(piece, attribute)
-        if attribute.attribute_words.search(piece) or _is_filler(piece):
+        if head and position == 0:
+            piece = _clean_head(piece, attribute)
+        elif _mentions(piece, attribute):
+            piece = ""
+        if _is_filler(piece):
             dropped_before = True
             continue
         if dropped_before and not kept:
@@ -71,10 +100,7 @@ def _redact_segment(body: str, attribute: Attribute, head: bool) -> str:
 
 def redact_title(title: str, attribute: Attribute, brand: str | None = None) -> str:
     masked, original = _protect(title, brand)
-    cleaned = _clean_head(masked, attribute)
-    if attribute.attribute_words.search(cleaned):
-        cleaned = attribute.attribute_words.sub(" ", cleaned)
-    return _restore(_tidy(cleaned), original)
+    return _restore(_tidy(_clean_head(masked, attribute)), original)
 
 
 def redact_description(description: str, attribute: Attribute, brand: str | None = None) -> str:

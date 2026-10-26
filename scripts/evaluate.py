@@ -1,8 +1,12 @@
 """Metric tables for prediction files written by scripts/predict.py.
 
-One row per (evidence mode, attribute, text condition). Accuracy comes with a 95% interval from
-a bootstrap over product families. With --train, the category guess (the most common training
-label of the item's category) is shown for comparison.
+Each predictions file is one run and must sit next to its run record (run.json), which
+predict.py writes only after the last prediction; a file whose record count differs from the
+run record is refused. One row per (run, split, subset, evidence mode, attribute, text
+condition), so different models or splits never merge. The subset is the clean items, plus,
+where a split has them, all labeled items including those excluded only as label noise.
+Accuracy comes with a 95% interval from a bootstrap over product families. With --train, the
+category guess (the most common training label of the item's category) is shown for comparison.
 
 Usage:
     uv run python -I scripts/evaluate.py <predictions.jsonl>... [--train <train.jsonl>] [--out <report.md>]
@@ -38,49 +42,62 @@ def main() -> None:
     args = parser.parse_args()
 
     guess = category_guess(load(args.train)) if args.train else None
-    groups = defaultdict(list)
-    runs = []
+    groups, runs = defaultdict(list), {}
     for path in args.predictions:
-        for r in load(path):
-            groups[(r["mode"], r["attribute"], r["condition"])].append(r)
         run_path = path.parent / "run.json"
-        if run_path.exists():
-            runs.append(json.loads(run_path.read_text(encoding="utf-8")))
+        if not run_path.exists():
+            raise SystemExit(f"{path}: no run.json beside it, so the run may not have finished")
+        run, records = json.loads(run_path.read_text(encoding="utf-8")), load(path)
+        if len(records) != run["n"]:
+            raise SystemExit(f"{path}: {len(records):,} records, but its run record says {run['n']:,}")
+        name = path.parent.name
+        if name in runs:
+            raise SystemExit(f"two prediction files come from runs named {name!r}")
+        runs[name] = run
+        for r in records:
+            if r["clean"]:
+                groups[(name, r["split"], "clean", r["mode"], r["attribute"], r["condition"])].append(r)
+            groups[(name, r["split"], "all labeled", r["mode"], r["attribute"], r["condition"])].append(r)
+    groups = {key: rows for key, rows in groups.items()
+              if key[2] == "clean" or len(rows) > len(groups.get(key[:2] + ("clean",) + key[3:], []))}
     summaries = {key: summarize(rows, guess=guess) for key, rows in sorted(groups.items())}
 
     lines = ["# Results", ""]
-    for run in runs:
-        lines.append(f"- Run {run['started']}: {run['model']['name']} at `{run['model']['revision'][:8]}`, "
-                     f"commit `{run['git']['commit'][:8]}`{' (dirty)' if run['git']['dirty'] else ''}, "
-                     f"{run['filters']['mode']}, {run['n']:,} items, {run['gpu']}, "
-                     f"{run['elapsed_seconds'] / 60:.1f} min")
+    for name, run in runs.items():
+        lines.append(f"- `{name}`, started {run['started']}: {run['model']['name']} at "
+                     f"`{run['model']['revision'][:8]}`, commit `{run['git']['commit'][:8]}`"
+                     f"{' (uncommitted changes)' if run['git']['dirty'] else ''}, {run['filters']['mode']}, "
+                     f"{run['n']:,} items, {run['gpu']}, {run['elapsed_seconds'] / 60:.1f} min")
+    head = "| Run | Split | Subset | Mode | Attribute | Text |"
+    rule = "|---|---|---|---|---|---|"
     lines += ["", "## Answers", "",
-              "| Mode | Attribute | Text | n | Accuracy (95% interval) | Macro accuracy | Category guess | Invalid |",
-              "|---|---|---|---:|---|---:|---:|---:|"]
-    for (mode, attribute, condition), s in summaries.items():
+              head + " n | Accuracy (95% interval) | Accuracy on valid outputs | Macro accuracy | Category guess "
+                     "| Invalid |",
+              rule + "---:|---|---:|---:|---:|---:|"]
+    for key, s in summaries.items():
         low, high = s["accuracy_interval"]
-        lines.append(f"| {mode} | {attribute} | {condition} | {s['n']:,} | {pct(s['accuracy'])} "
-                     f"({pct(low)} to {pct(high)}) | {pct(s['macro_accuracy'])} | {pct(s['category_guess'])} | "
+        lines.append("| " + " | ".join(key) + f" | {s['n']:,} | {pct(s['accuracy'])} ({pct(low)} to {pct(high)}) | "
+                     f"{pct(s['accuracy_valid'])} | {pct(s['macro_accuracy'])} | {pct(s['category_guess'])} | "
                      f"{pct(s['invalid'])} |")
     lines += ["", "## Stated confidence", "",
-              ("| Mode | Attribute | Text | Brier | Brier, invalid = 1 | ECE | AUROC | Risk–coverage area | "
-               "Mean | Distinct values | Most common (share) |"),
-              "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|"]
-    for (mode, attribute, condition), s in summaries.items():
+              head + " Brier | Brier, invalid = 1 | ECE | AUROC | Risk–coverage area | Mean | Distinct values | "
+                     "Most common (share) |",
+              rule + "---:|---:|---:|---:|---:|---:|---:|---|"]
+    for key, s in summaries.items():
         top = "–" if s["top_confidence"] is None else f"{s['top_confidence']:g} ({pct(s['top_confidence_share'])})"
-        lines.append(f"| {mode} | {attribute} | {condition} | {num(s['brier'])} | {num(s['brier_invalid_as_1'])} | "
+        lines.append("| " + " | ".join(key) + f" | {num(s['brier'])} | {num(s['brier_invalid_as_1'])} | "
                      f"{num(s['ece'])} | {num(s['auroc'])} | {num(s['aurc'])} | {num(s['mean_confidence'])} | "
                      f"{s['distinct_confidences']} | {top} |")
     lines += ["", "## Answer-letter probability (temperature 1)", "",
-              "| Mode | Attribute | Text | ECE | AUROC | Risk–coverage area | Choice position not found |",
-              "|---|---|---|---:|---:|---:|---:|"]
-    for (mode, attribute, condition), s in summaries.items():
-        lines.append(f"| {mode} | {attribute} | {condition} | {num(s['letter_ece'])} | {num(s['letter_auroc'])} | "
+              head + " ECE | AUROC | Risk–coverage area | Choice position not found |",
+              rule + "---:|---:|---:|---:|"]
+    for key, s in summaries.items():
+        lines.append("| " + " | ".join(key) + f" | {num(s['letter_ece'])} | {num(s['letter_auroc'])} | "
                      f"{num(s['letter_aurc'])} | {s['letter_missing']} |")
     lines += ["", "## Invalid outputs by reason", ""]
-    for (mode, attribute, condition), s in summaries.items():
+    for key, s in summaries.items():
         reasons = ", ".join(f"{k} {v}" for k, v in sorted(s["errors"].items(), key=lambda kv: -kv[1])) or "none"
-        lines.append(f"- {mode} / {attribute} / {condition}: {reasons}")
+        lines.append(f"- {' / '.join(key)}: {reasons}")
 
     text = "\n".join(lines) + "\n"
     print(text)

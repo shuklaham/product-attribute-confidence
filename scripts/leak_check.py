@@ -48,8 +48,12 @@ class NaiveBayes:
 
         return max(self.labels, key=score)
 
-    def clue_words(self, label: str, k: int = 8) -> list[str]:
-        """Words most over-represented in one label relative to the others."""
+    def clue_words(self, label: str, k: int = 10) -> list[str]:
+        """Words that move the classifier most toward one label: count times log-odds against the others.
+
+        Ranking by log-odds alone favours rare words; weighting by count brings frequent strong cues
+        (such as "placket" for polo collars) to the top.
+        """
         rest = collections.Counter()
         for other, counts in self.counts.items():
             if other != label:
@@ -59,8 +63,8 @@ class NaiveBayes:
         def log_odds(w):
             return math.log((self.counts[label][w] + 1) / self.totals[label]) - math.log((rest[w] + 1) / rest_total)
 
-        frequent = [w for w, c in self.counts[label].items() if c >= MIN_COUNT]
-        return sorted(frequent, key=log_odds, reverse=True)[:k]
+        frequent = [w for w, c in self.counts[label].items() if c >= MIN_COUNT and log_odds(w) > 0]
+        return sorted(frequent, key=lambda w: self.counts[label][w] * log_odds(w), reverse=True)[:k]
 
 
 def accuracy(pairs) -> tuple[float, float]:

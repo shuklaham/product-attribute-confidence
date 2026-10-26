@@ -1,11 +1,12 @@
-"""Data audit for the Myntra catalog under ontology v0.
+"""Data audit for the Myntra catalog under the current ontology.
 
 Writes label coverage, every exclusion by reason, included labels per split, the label-noise
-estimate by category, a category-majority baseline, a redaction check, and colour-variant
-family statistics.
+estimate by category, a category-guess baseline, a redaction check, and family statistics.
+With photos.csv, families also join byte-identical photos and the photo rule applies, as in
+the manifests.
 
 Usage:
-    uv run python -I scripts/audit.py <styles_dir> <report.md> [photos.csv]
+    uv run python -I scripts/audit.py <styles_dir> <report.md> [photos.csv] [annotations.csv]
 """
 
 import collections
@@ -18,12 +19,12 @@ from pac import ontology as ontology_module
 from pac.records import directory_fingerprint, load_products
 from pac.redact import redact_description, redact_title
 from pac.splits import (CROSSING_SPLIT, EVAL_SPLITS, HELD_OUT, HELD_OUT_SPLIT, SEEN, assign_splits, families,
-                        label_rows, usable_photos)
+                        label_rows, photo_hashes, usable_photos)
 from pac.text import mask_brand
 
 SPLIT_ORDER = ["train", "dev", "cal_fit", "cal_threshold", "test", HELD_OUT_SPLIT]
 REASONS = ["", "text_conflict", "family_disagreement", "roll_up_sleeves", "dropped_label", "unmapped_value",
-           "crossing_family", "no_usable_photo", "unsupported_label"]
+           "crossing_family", "no_usable_photo", "unsupported_label", "inspected_test_item"]
 
 
 def pct(n, d):
@@ -35,20 +36,24 @@ def table(header, rows):
     return "\n".join(lines + ["| " + " | ".join(str(c) for c in row) + " |" for row in rows])
 
 
-def main(styles_dir: str, report_path: str, photos_csv: str | None = None) -> None:
+def main(styles_dir: str, report_path: str, photos_csv: str | None = None,
+         annotations: str = "annotations/conflict_check.csv") -> None:
     ontology = ontology_module.load()
     products, failures = load_products(styles_dir)
     by_id = {p.id: p for p in products}
-    family_of = families(products)
-    splits = assign_splits(products, family_of)
-    photo_ok = None
+    photo_ok, hashes = None, {}
     if photos_csv:
         with open(photos_csv, newline="", encoding="utf-8") as f:
-            photo_ok = usable_photos(list(csv.DictReader(f)))
-    rows = label_rows(products, splits, ontology, photo_ok)
+            photo_rows = list(csv.DictReader(f))
+        photo_ok, hashes = usable_photos(photo_rows), photo_hashes(photo_rows)
+    family_of = families(products, hashes)
+    splits = assign_splits(products, family_of)
+    with open(annotations, newline="", encoding="utf-8") as f:
+        inspected = {(int(r["product_id"]), r["attribute"]) for r in csv.DictReader(f)}
+    rows = label_rows(products, splits, ontology, photo_ok, inspected)
     side = {pid: ("seen" if s.category in SEEN else "held-out") for pid, s in splits.items()}
 
-    out = ["# Data audit: Myntra Fashion Product Images, ontology v0", "",
+    out = [f"# Data audit: Myntra Fashion Product Images, ontology {ontology.version}", "",
            f"Parsed {len(products):,} records ({failures} unreadable); source fingerprint "
            f"`{directory_fingerprint(styles_dir)[:12]}`, ontology `{ontology.version}` (`{ontology.sha256[:12]}`). "
            f"{len(splits):,} products are in the {len(SEEN)} seen and {len(HELD_OUT)} held-out categories.", ""]
@@ -97,31 +102,45 @@ def main(styles_dir: str, report_path: str, photos_csv: str | None = None) -> No
         out += ["### Included labels: does the text name the answer?", "",
                 table(["Side", "Included", "Text names the label", "Text names no label"], status_rows), ""]
 
+        train_counts = collections.defaultdict(collections.Counter)
+        for r in attr_rows:
+            if r.included and splits[r.product_id].split == "train":
+                train_counts[splits[r.product_id].category][r.label] += 1
+                train_counts[None][r.label] += 1
         majority_rows = []
-        for split in ("test", HELD_OUT_SPLIT):
+        for split in ("dev", "test", HELD_OUT_SPLIT):
             included = [r for r in attr_rows if r.included and splits[r.product_id].split == split]
-            by_category = collections.defaultdict(collections.Counter)
-            for r in included:
-                by_category[splits[r.product_id].category][r.label] += 1
-            hits = sum(c.most_common(1)[0][1] for c in by_category.values())
+            guess = {category: (train_counts.get(category) or train_counts[None]).most_common(1)[0][0]
+                     for category in {splits[r.product_id].category for r in included}}
+            hits = sum(r.label == guess[splits[r.product_id].category] for r in included)
             majority_rows.append([split, len(included), pct(hits, len(included))])
-        out += ["### Guessing the most common label per category (no photo, no text)", "",
+        out += ["### Guessing the most common training label of the category (no photo, no text)", "",
+                "Held-out categories have no training labels, so they get the most common training label overall.", "",
                 table(["Split", "Included", "Accuracy"], majority_rows), ""]
 
         evaluated = [r for r in attr_rows if r.included and splits[r.product_id].split in EVAL_SPLITS]
-        residual = empty = 0
+        residual = in_brand = empty = 0
         ratios = []
+
+        def evidence(text):
+            return bool(attribute.attribute_words.search(text)
+                        or any(x.search(text) for x in attribute.redaction_patterns))
+
         for r in evaluated:
             p = by_id[r.product_id]
             title = redact_title(p.title, attribute, p.brand)
             description = redact_description(p.description, attribute, p.brand)
-            text = mask_brand(f"{title} {description}", p.brand)  # brand names are kept on purpose (rule 4)
-            residual += bool(attribute.attribute_words.search(text) or any(x.search(text) for x in attribute.all_patterns))
+            text = f"{title} {description}"
+            residual += evidence(mask_brand(text, p.brand))  # brand names are kept on purpose (rule 4)
+            in_brand += evidence(text) and not evidence(mask_brand(text, p.brand))
             empty += p.description != "" and description == ""
             if p.description:
                 ratios.append(len(description) / len(p.description))
         out += ["### Redaction check (evaluation splits)", "",
-                f"- Redacted texts that still contain an attribute word or label phrase: {residual} of {len(evaluated):,}.",
+                f"- Redacted texts that still contain an attribute word, label phrase or redaction cue outside the "
+                f"brand name: {residual} of {len(evaluated):,}.",
+                f"- Redacted texts whose only such word is inside the brand name, kept by rule 4 (for example "
+                f"U.S. Polo Assn.): {in_brand}.",
                 f"- Descriptions that become empty: {empty} ({pct(empty, len(evaluated))}).",
                 f"- Median share of description length kept: {statistics.median(ratios):.0%}." if ratios else "",
                 "- The stronger check, a text-only model on redacted dev text scoring near the category guess, "
@@ -133,7 +152,8 @@ def main(styles_dir: str, report_path: str, photos_csv: str | None = None) -> No
     sizes = collections.Counter(min(len(m), 5) for m in members.values())
     shared = sum(len(m) for m in members.values() if len(m) > 1)
     crossing = sum(1 for m in members.values() if splits[m[0]].split == CROSSING_SPLIT)
-    out += ["## Colour-variant families", "",
+    out += ["## Families", "",
+            "Families join colour variants and, with photos.csv, products whose photo files are byte-identical.", "",
             f"- {len(members):,} families cover {len(splits):,} in-scope products; {shared:,} products "
             f"({pct(shared, len(splits))}) share a family.",
             "- Family sizes (5 means 5 or more): " + ", ".join(f"{k}: {v:,}" for k, v in sorted(sizes.items())),

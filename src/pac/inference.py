@@ -78,13 +78,15 @@ def letter_logprobs(pieces: Sequence[str], logprobs: Sequence[dict[int, float]],
 
 def score(example: dict, text: str, letter_logprobs: dict[str, float] | None) -> dict:
     """One prediction record: the strict parse of the output, its correctness and the letter log-probabilities."""
-    parsed = parse_output(text, [o["letter"] for o in example["options"]])
+    labels = {o["letter"]: o["label"] for o in example["options"]}
+    parsed = parse_output(text, list(labels))
     keys = ("example_id", "product_id", "family_id", "category", "split", "attribute", "condition", "answer",
-            "reference")
+            "reference", "text_status", "clean")
     return {
         **{k: example[k] for k in keys},
         "output": text,
         "choice": parsed.choice,
+        "prediction": labels.get(parsed.choice),
         "confidence": parsed.confidence,
         "error": parsed.error,
         "correct": int(parsed.valid and parsed.choice == example["answer"]),

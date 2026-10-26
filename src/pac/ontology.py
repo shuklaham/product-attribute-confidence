@@ -40,9 +40,11 @@ class Attribute:
     dropped_raw: frozenset[str]
     dropped_patterns: tuple[re.Pattern, ...]
     attribute_words: re.Pattern
-    head_fallback: re.Pattern
+    head_modifiers: re.Pattern
+    redaction_cues: tuple[re.Pattern, ...] = ()
     exclusion_reason: str = ""
     exclusion_patterns: tuple[re.Pattern, ...] = ()
+    exclusion_raw: tuple[tuple[str, frozenset[str]], ...] = ()
 
     @property
     def label_names(self) -> list[str]:
@@ -54,8 +56,13 @@ class Attribute:
 
     @property
     def all_patterns(self) -> tuple[re.Pattern, ...]:
-        """Kept and dropped label phrases, used for redaction."""
+        """Kept and dropped label phrases."""
         return tuple(p for label in self.labels for p in label.patterns) + self.dropped_patterns
+
+    @property
+    def redaction_patterns(self) -> tuple[re.Pattern, ...]:
+        """Everything redaction removes besides the attribute words: label phrases and cues."""
+        return self.all_patterns + self.redaction_cues
 
     def canonical(self, raw) -> tuple[str | None, str]:
         """Map a raw catalog value to (label, outcome)."""
@@ -75,6 +82,10 @@ class Attribute:
     def excluded_by_text(self, text: str) -> bool:
         """True when the text describes a product whose label is ambiguous by definition for this attribute."""
         return any(p.search(text) for p in self.exclusion_patterns)
+
+    def excluded_by_catalog(self, raw_labels: dict) -> bool:
+        """True when another catalog field marks the product as ambiguous for this attribute."""
+        return any(str(raw_labels.get(name, "")).strip() in values for name, values in self.exclusion_raw)
 
 
 @dataclass(frozen=True, eq=False)
@@ -104,8 +115,11 @@ def load(path: Path | str = DEFAULT_PATH) -> Ontology:
             dropped_raw=frozenset(value for d in dropped for value in d["raw_values"]),
             dropped_patterns=tuple(_compile(p) for d in dropped for p in d.get("phrases", [])),
             attribute_words=_compile(a["attribute_words"]),
-            head_fallback=_compile(a["head_fallback"]),
+            head_modifiers=_compile(a["head_modifiers"]),
+            redaction_cues=tuple(_compile(p) for p in a.get("redaction_cues") or []),
             exclusion_reason=exclude_if.get("reason", ""),
             exclusion_patterns=tuple(_compile(p) for p in exclude_if.get("phrases", [])),
+            exclusion_raw=tuple((name, frozenset(values))
+                                for name, values in (exclude_if.get("raw_values") or {}).items()),
         )
     return Ontology(spec["version"], spec["min_train_support"], attributes, hashlib.sha256(raw).hexdigest())

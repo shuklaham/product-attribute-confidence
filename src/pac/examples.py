@@ -33,7 +33,9 @@ def evidence(product: Product, attribute: Attribute, condition: str) -> tuple[st
 
 
 def make_example(product: Product, attribute: Attribute, label: str, split: str, family_id: int,
-                 condition: str) -> dict:
+                 condition: str, *, text_status: str, clean: bool) -> dict:
+    """One model-facing example. text_status says whether the full text names the label, another label or
+    none; clean is False for a test item kept only for the "all labeled items" results."""
     title, description = evidence(product, attribute, condition)
     order = option_order(product.id, attribute.key, attribute.label_names)
     definitions = attribute.definitions
@@ -53,4 +55,6 @@ def make_example(product: Product, attribute: Attribute, label: str, split: str,
                     for i, name in enumerate(order)],
         "answer": LETTERS[order.index(label)],
         "reference": label,
+        "text_status": text_status,
+        "clean": clean,
     }

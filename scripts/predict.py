@@ -31,6 +31,7 @@ MODEL = "Qwen/Qwen3-VL-4B-Instruct"
 REVISION = "ebb281ec70b05090aa6165b016eac8ec08e71b17"
 MAX_MODEL_LEN = 4096
 MAX_TOKENS = 48
+IMAGE_TOKENS = 256  # photos are at most 512 px a side, and each visual token covers 32 x 32 px
 SEED = 0
 CHUNK = 256
 
@@ -69,6 +70,19 @@ def main() -> None:
     started, clock = datetime.now(UTC), time.monotonic()
     processor = AutoProcessor.from_pretrained(args.model, revision=args.revision)
     tokenizer = processor.tokenizer
+
+    # vLLM aborts the whole batch on a prompt longer than the context, so every prompt is
+    # checked before any GPU time is spent.
+    prompts = []
+    for example in examples:
+        view, photo = evidence_view(example, args.mode)
+        prompts.append((processor.apply_chat_template(messages(view, image=example["image"] if photo else None),
+                                                      tokenize=False, add_generation_prompt=True), photo))
+    too_long = [e["example_id"] for e, (prompt, photo) in zip(examples, prompts)
+                if len(tokenizer(prompt).input_ids) + IMAGE_TOKENS * photo + MAX_TOKENS > MAX_MODEL_LEN]
+    if too_long:
+        raise SystemExit(f"{len(too_long)} prompts do not fit in {MAX_MODEL_LEN} tokens, for example {too_long[:5]}")
+
     engine = {"max_model_len": MAX_MODEL_LEN, "limit_mm_per_prompt": {"image": 1}, "seed": SEED}
     llm = LLM(model=args.model, revision=args.revision, **engine)
     letter_ids = letter_token_ids(lambda s: tokenizer.encode(s, add_special_tokens=False))
@@ -76,20 +90,18 @@ def main() -> None:
     params = SamplingParams(**sampling, logprob_token_ids=list(letter_ids.values()))
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    prompt_hash, first_prompt = hashlib.sha256(), None
+    prompt_hash, image_hash = hashlib.sha256(), hashlib.sha256()
     with open(args.out_dir / "predictions.jsonl", "w", encoding="utf-8") as out:
         for start in range(0, len(examples), CHUNK):
             chunk = examples[start:start + CHUNK]
             requests = []
-            for example in chunk:
-                view, photo = evidence_view(example, args.mode)
-                prompt = processor.apply_chat_template(messages(view, image=example["image"] if photo else None),
-                                                       tokenize=False, add_generation_prompt=True)
+            for example, (prompt, photo) in zip(chunk, prompts[start:start + CHUNK]):
                 prompt_hash.update(prompt.encode())
-                first_prompt = first_prompt or prompt
                 request = {"prompt": prompt}
                 if photo:
-                    with Image.open(args.image_dir / example["image"]) as image:
+                    path = args.image_dir / example["image"]
+                    image_hash.update(path.read_bytes())
+                    with Image.open(path) as image:
                         request["multi_modal_data"] = {"image": image.convert("RGB")}
                 requests.append(request)
             for example, result in zip(chunk, llm.generate(requests, params, use_tqdm=False)):
@@ -121,7 +133,8 @@ def main() -> None:
         "sampling": sampling,
         "letter_token_ids": letter_ids,
         "prompts_sha256": prompt_hash.hexdigest(),
-        "first_prompt": first_prompt,
+        "images_sha256": image_hash.hexdigest() if args.mode != "text_only" else None,
+        "first_prompt": prompts[0][0],
         "versions": {p: metadata.version(p) for p in ("vllm", "torch", "transformers")}
                     | {"python": platform.python_version()},
     }

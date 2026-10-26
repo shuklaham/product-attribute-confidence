@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from pac.evaluation import category_guess, letter_confidence, summarize
+from pac.evaluation import category_guess, evidence_sensitivity, letter_confidence, summarize
 from pac.examples import LETTERS
 from pac.inference import choice_token_index, evidence_view, letter_logprobs, letter_token_ids, score
 
@@ -48,13 +48,15 @@ def test_letter_logprobs_reads_the_choice_position():
 def example(answer="B", category="Tshirts", family=1):
     return {"example_id": f"{family}:neckline:redacted", "product_id": family, "family_id": family,
             "category": category, "split": "dev", "attribute": "neckline", "condition": "redacted",
-            "answer": answer, "reference": {"A": "V-neck", "B": "Round neck"}[answer],
-            "options": [{"letter": "A"}, {"letter": "B"}]}
+            "answer": answer, "reference": {"A": "V-neck", "B": "Round neck"}[answer], "text_status": "silent",
+            "clean": True,
+            "options": [{"letter": "A", "label": "V-neck"}, {"letter": "B", "label": "Round neck"}]}
 
 
 def test_score_uses_the_strict_parser():
     right = score(example(), '{"choice": "B", "confidence": 0.7}', {"A": -2.0, "B": -0.2})
     assert (right["correct"], right["choice"], right["confidence"], right["error"]) == (1, "B", 0.7, None)
+    assert right["prediction"] == "Round neck"
     fenced = score(example(), '```json\n{"choice": "B", "confidence": 0.7}\n```', None)
     assert (fenced["correct"], fenced["error"]) == (0, "malformed_json")
 
@@ -90,3 +92,19 @@ def test_summarize_and_category_guess():
     assert (s["distinct_confidences"], s["top_confidence"], s["top_confidence_share"]) == (2, 0.9, pytest.approx(2 / 3))
     assert s["mean_confidence"] == pytest.approx(0.8)
     assert s["letter_missing"] == 0
+    assert s["accuracy_valid"] == pytest.approx(2 / 3)
+
+
+def test_evidence_sensitivity_joins_items_and_reports_invalid_rates():
+    def record(family, condition, text):
+        return {**score(example(family=family), text, None), "condition": condition}
+
+    full = [record(1, "full", '{"choice": "B", "confidence": 0.9}'),
+            record(2, "full", '{"choice": "B", "confidence": 0.9}')]
+    redacted = [record(2, "redacted", 'no answer'), record(1, "redacted", '{"choice": "B", "confidence": 0.6}')]
+    s = evidence_sensitivity(full, redacted)
+    assert (s["n"], s["valid_in_both"]) == (2, 1)
+    assert (s["confidence_drop"], s["accuracy_drop"]) == pytest.approx((0.3, 0.0))
+    assert (s["invalid_full"], s["invalid_redacted"]) == (0.0, 0.5)
+    with pytest.raises(ValueError):
+        evidence_sensitivity(full, redacted[:1])

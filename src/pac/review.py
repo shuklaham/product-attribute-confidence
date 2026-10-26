@@ -10,8 +10,10 @@ QUEUE_SIZE = 100
 # Test splits stay unseen: checking them could change the exclusion rule after we had looked at their items.
 REVIEW_SPLITS = ("train", "dev", "cal_fit", "cal_threshold")
 VERDICTS = ("Catalog label is wrong", "Description is wrong", "Phrase matcher misread the text", "Can't tell")
+# blind is 1 when the verdict was saved before the reviewer could see Claude's. Verdicts saved
+# before 2026-10-26 have it empty: the app then showed Claude's verdict and pre-selected it.
 ANNOTATION_FIELDS = ("product_id", "attribute", "catalog_label", "text_names", "verdict", "note", "reviewer",
-                     "reviewed_at")
+                     "reviewed_at", "blind")
 
 
 def hand_check_queue(rows: Iterable[dict], n: int = QUEUE_SIZE) -> list[tuple[int, str]]:

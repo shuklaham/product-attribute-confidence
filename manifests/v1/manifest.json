@@ -1,0 +1,38 @@
+{
+  "ontology_version": "v1",
+  "ontology_sha256": "a3179ca26da6e9cd29a3fa2bf9c02c0e51b752111e5137d50d3ce4bca9ca1b86",
+  "split_salt": "splits-v0",
+  "bucket_percent": {
+    "train": 70,
+    "dev": 10,
+    "cal_fit": 5,
+    "cal_threshold": 5,
+    "test": 10
+  },
+  "source_fingerprint": "f1352f4f7be4a47ef7c6704ab00fc0d572b15f2f98d51a366bdb707f9f0a8d18",
+  "records": 44446,
+  "unreadable_records": 0,
+  "products_in_scope": 15712,
+  "photo_rule": "decodes and long side >= 480 px",
+  "family_links": "colour variants and byte-identical photos",
+  "annotations_sha256": "e2cc9fb17948fc9e37579036b063e1294174b0822de6326d15dc92a746e00e07",
+  "included_labels": {
+    "neckline/cal_fit": 327,
+    "neckline/cal_threshold": 409,
+    "neckline/dev": 710,
+    "neckline/heldout_test": 1232,
+    "neckline/test": 667,
+    "neckline/train": 4693,
+    "sleeve_length/cal_fit": 482,
+    "sleeve_length/cal_threshold": 564,
+    "sleeve_length/dev": 1063,
+    "sleeve_length/heldout_test": 1424,
+    "sleeve_length/test": 1020,
+    "sleeve_length/train": 6944
+  },
+  "files": {
+    "products.csv": "eecd099e5632cc145fd4985ce7ded8e252b11c2d2e04ecdf1a1d86db2818d40a",
+    "labels.csv": "c8b02a075f7a41d8f8ca85b7c53fcb781eb48bb1feaa840e9f00f425fa99e3f8",
+    "photos.csv": "9af20fb6102ba46e931f5ee4034dd07bbcb3154865ce3a7d287a29870a9b935b"
+  }
+}
