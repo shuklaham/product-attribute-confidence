@@ -37,19 +37,21 @@ def reshuffle(example: dict, epoch: int, salt: str = SALT) -> dict:
             "answer": LETTERS[order.index(example["reference"])]}
 
 
-def presentations(examples: Sequence[dict], epochs: int) -> list[dict]:
-    """The training presentations for all epochs: one per (product, attribute) and epoch.
+def presentation_epoch(examples: Sequence[dict], epoch: int) -> list[dict]:
+    """One epoch's presentations: one per (product, attribute), in the condition drawn for that epoch.
 
     examples holds both text conditions of every item, as the example builder writes them.
     """
-    out = []
-    for epoch in range(epochs):
-        chosen = {}
-        for e in examples:
-            if e["condition"] == condition_for(e["family_id"], e["attribute"], epoch):
-                chosen[(e["product_id"], e["attribute"])] = reshuffle(e, epoch)
-        out += [chosen[key] for key in sorted(chosen)]
-    return out
+    chosen = {}
+    for e in examples:
+        if e["condition"] == condition_for(e["family_id"], e["attribute"], epoch):
+            chosen[(e["product_id"], e["attribute"])] = reshuffle(e, epoch)
+    return [chosen[key] for key in sorted(chosen)]
+
+
+def presentations(examples: Sequence[dict], epochs: int) -> list[dict]:
+    """The training presentations for all epochs: one per (product, attribute) and epoch."""
+    return [p for epoch in range(epochs) for p in presentation_epoch(examples, epoch)]
 
 
 def target_text(letter: str, confidence: str = TARGET_CONFIDENCE) -> tuple[str, tuple[int, int]]:

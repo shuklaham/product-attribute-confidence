@@ -219,3 +219,60 @@ The numbers are in `reports/phase1.md` and the run log. This section is about wh
 - One gap is visible already. When the text is redacted on held-out items, accuracy falls 7.2 points, the written confidence falls 0.5 points, and the letter probability falls 9.8. Making the written number react to missing evidence takes training on the number itself.
 
 Code: `scripts/report_phase1.py`, `src/pac/methods.py`. Results: `reports/phase1.md`.
+
+## 14. Training M3 and M4 with GRPO
+
+**The loop in one paragraph.** GRPO (group relative policy optimization) needs no value model and no learned reward model. For each prompt it samples a group of 8 answers from the current model and scores each with a fixed rule, the reward in `src/pac/rewards.py`. It then nudges the model toward the answers that scored above their group's average and away from those below. The nudge is a gradient step on the log-probability of every token an answer contains, weighted by that answer's *advantage*: its reward minus the group's mean reward.
+
+**Why groups need disagreement.** M3's reward is 1 for a right answer and 0 for a wrong one. If all 8 answers to a prompt are right, every advantage is 0, and that prompt teaches nothing. M1 is right about 98% of the time on seen categories, so at sampling temperature 1 only about 5.5% of dev prompts would get a mix of right and wrong answers (`scripts/signal_share.py`). So the prompts are sorted first. A sampling pass answers every training prompt 8 times and labels it *mixed* (some right, some wrong) or *settled*, and every batch takes half its prompts from each.
+
+**What M4 can learn that M3 cannot.** M4's reward also charges for the gap between the stated confidence and the outcome.
+- Two right answers stated at 0.95 and 0.80 earn 0.9975 and 0.96, so even a settled group teaches M4 something: when you are right, say so.
+- In a mixed group, a wrong answer stated at 0.95 earns −0.90 and one stated at 0.5 earns −0.25. So M4 learns to lower its confidence when it picks a doubtful letter.
+- It can do that because the model writes the letter before the number. When it writes the confidence, its own choice is already in its context.
+- A pool of only mixed prompts would teach M4 the doubt but never the certainty, which is why half of every batch is settled.
+
+**Three settings, and why.**
+- **No division by the group's spread.** Standard GRPO divides each advantage by the standard deviation of the group's rewards. In M4's settled groups, the rewards differ by thousandths (0.9975 against 0.9996). Dividing by that tiny spread would turn them into updates as large as the gap between a right and a wrong answer. Centring on the mean alone keeps every update proportional to how much better or worse the answer actually was.
+- **No KL term.** Many GRPO setups also penalize drifting from the starting model. Here each batch is sampled fresh from the current policy and used for one update, and the run is a few hundred steps of a LoRA that starts at M1. The penalty would mainly cost an extra forward pass through a reference model, about a quarter of the compute.
+- **Temperature 1, no top-k or top-p.** The update treats the samples as draws from the model's own distribution. Qwen's default sampling (top-k 20, top-p 0.8) would cut that distribution, and the math would no longer hold.
+
+**The check before training.** The update assumes its log-probabilities are those of the policy that sampled. Two things can break that silently.
+- Generation settings can change the distribution. The check confirms that the sampler's processed scores equal its raw logits.
+- The training forward pass can see the tokens differently from the sampler, through padding, position encodings or the image-token markers. The check confirms that the training forward reproduces the sampler's log-probabilities to within bf16 rounding.
+
+Code: `src/pac/grpo.py`, `scripts/sample_pool.py`, `scripts/train_grpo.py`. Tests: `tests/test_grpo.py`.
+
+## 15. What the RL phase showed
+
+The numbers are in `reports/phase2.md` and the run log. This section is about why they came out the way they did.
+
+**Calibration and ranking are different skills, and the Brier score mixes both with accuracy.**
+- Murphy's decomposition splits the Brier score into three parts:
+  - **calibration:** does an answer stated at 0.85 come true 85% of the time?
+  - **resolution:** do the stated numbers separate the answers that turn out right from those that turn out wrong?
+  - **uncertainty:** a(1 − a) for accuracy a. It depends only on the answers, not on the confidence.
+- On the held-out test, M4 beats M2-logit by 0.006 on the Brier score. Decomposed:
+  - its calibration is better, 0.0013 against 0.0051;
+  - its higher accuracy lowers the uncertainty term, 0.0794 against 0.0952;
+  - but its resolution is less than half of M2-logit's, 0.0084 against 0.0219.
+- So RL taught the written number to mean what it says: M4's 0.85 answers are right 84% of the time, on categories it never trained on. It did not teach the number to separate answers as sharply as the letter probability does. AUROC, which measures only the separating, shows the same thing: 0.79 against 0.86.
+
+**Why the written number separates less.** M4 writes 7 distinct values, and 0.98 on 75% of its answers. A number with 7 levels splits the answers into at most 7 groups, while the letter probability is continuous. The Brier reward does pay for finer distinctions, since a proper scoring rule rewards every distinction the model can really make. But learning them takes exploration. M1 wrote three values, and in 461 steps M4 got to seven.
+
+**Why the training signal ran out.**
+- Each mixed prompt came up three times. As the policy learned those prompts, its 8 answers to each agreed more often.
+- The share of groups with no correctness signal rose from 73% to 97%.
+- For M3, whose reward is correctness only, that left almost no gradient in the last third of the run: 0.7 groups per step on average. M4 kept learning, because its confidences still varied when its answers agreed.
+- The fix is in the data, not the algorithm: re-sort the pool between passes, or keep sampling until each batch holds groups with a signal (dynamic sampling, as in DAPO).
+
+**Why the verdict is "not better" despite a better point estimate.**
+- The rule was fixed before training: the whole 95% interval of the Brier difference had to lie below zero. Its upper end reached +0.0004.
+- With one training seed, the interval covers the sampling of test items but not the variation between training runs, so three seeds (Milestone 5) are needed before a claim either way.
+- Holding to the rule now is what will make a positive result believable later.
+
+**What did carry over.** RL closed the two gaps phase 1 found in the written number.
+- It now reacts to missing evidence: redacting the text lowers M4's confidence by 4.0 points, against 0.5 for M1.
+- It now follows the model's own letter probability: rank correlation 0.87, against 0.51.
+
+Code: `scripts/train_grpo.py`, `scripts/report_phase2.py`. Results: `reports/phase2.md`.

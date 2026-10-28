@@ -2,6 +2,10 @@
 
 Does RL with a calibration reward make a vision-language model's stated confidence more trustworthy on product categories it never trained on, compared with cheap post-hoc calibration? The full design, decisions and milestones are in [docs/plan.md](docs/plan.md). How each part works, and why it is built that way, is in [docs/concepts.md](docs/concepts.md). The dated run log is [docs/log.md](docs/log.md).
 
+**Results so far** (one RL training seed):
+- **[reports/phase1.md](reports/phase1.md), SFT and the cheap fixes.** SFT lifts held-out accuracy, but the written confidence stays at 0.95. The model's own letter probabilities, temperature-scaled (M2-logit), are the strongest cheap fix.
+- **[reports/phase2.md](reports/phase2.md), RL.** RL with a calibration reward (M4) makes the written confidence the best calibrated of any method on held-out categories, and adds 2 points of accuracy. It still separates right from wrong answers less sharply than M2-logit, so by the rule fixed before training it does not count as better (Brier difference −0.006, 95% interval −0.014 to +0.0004).
+
 ## Setup
 
 ```
@@ -60,6 +64,19 @@ uv run --group gpu python -I scripts/predict.py data/processed/v1/test.jsonl dat
 
 # Phase-1 report, locally: maps, thresholds, tables, figures and bootstrap intervals (about 2 minutes)
 uv run python -I scripts/report_phase1.py
+
+# Phase 2 (GRPO). From the laptop: copy the repo's tracked files, the data and the M1 adapter to the pod
+scripts/pod/push.sh <host> <port> <known_hosts>
+# On the pod: sort the RL prompts into strata, check sampling and scoring on 8 prompts, then run M4 and M3
+# unattended. The run stops its own pod when it ends, stalls or overruns (scripts/pod/selfstop.sh, guard.sh).
+uv run --group gpu python -I scripts/sample_pool.py data/processed/v1/train.jsonl data/images artifacts/m1_lr2e-4/adapter artifacts/grpo_pool
+uv run --group gpu python -I scripts/train_grpo.py data/processed/v1/train.jsonl data/images artifacts/grpo_pool \
+    artifacts/m1_lr2e-4/adapter artifacts/grpo_check --reward calibration --check 8
+bash scripts/pod/phase2.sh
+# On the laptop: copy the outputs back as they appear, verify them, and let the pod stop once copied
+scripts/pod/watch.sh <host> <port> <known_hosts> <local_dir>
+# Phase-2 report, locally
+uv run python -I scripts/report_phase2.py
 ```
 
 Each run writes `predictions.jsonl` and a run record (`run.json`: git commit, model revision, package versions, GPU, time) under `artifacts/`, which is gitignored. Only the aggregated tables in `reports/` are committed.
