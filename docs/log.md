@@ -348,3 +348,30 @@ Milestone 4 is complete.
 **Next** (author's decisions for Milestone 5):
 - **The stop line was crossed**, so the RL recipe needs a rethink before more seeds. Options: re-sort the pool between passes, keep only groups with signal as they are sampled, or start RL from a model that is less sure on the training categories. Whichever is chosen, it is fixed before the next run.
 - **Three seeds for M3 and M4.** With one seed, the primary interval crosses zero by 0.0004, and the seed spread is unknown.
+
+## 2026-10-28: Milestone 5, GRPO recipe v2 over three seeds, M5 and the photo swap
+
+**Decisions** (author, before any run; reasons in the plan's decision log):
+- the RL recipe is fixed (v2) and all three seeds are rerun;
+- M5 and the photo swap are added;
+- PRs #2–#4 were merged into main locally.
+
+**Prepared locally**
+- Photo-swap set: 500 clean held-out items per attribute, in both text conditions (2,000 examples). 1,156 of 1,232 neckline items and all 1,424 sleeve items had a donor.
+- M5 data: 3,458 of M1's 61,721 valid sampled answers, capped at 300 per target value; 1,631 right and 1,827 wrong.
+
+**Pre-flight on a live pod**
+- The v2 check, with 8 prompts and seed 0:
+  - sampling used the plain distribution;
+  - every sampled answer opened with the prefix the scorer assumes;
+  - training log-probabilities matched the sampler's (mean gap 0.0033);
+  - the scorer's p matched the sampler's letter probability within 0.0023.
+- A full scoring pass of the 7,717 prompts took 19.1 minutes, against an estimate of 5–11. By the rule fixed beforehand (over 6 minutes), re-scoring runs every 100 steps, not 50.
+- At step 0, M1's scores made 732 prompts mixed, with a 0.63 chance of a mixed group, the same as dev predicted.
+- M5: the token check marked exactly the confidence digits, and a 3-step run trained with the two-part loss.
+
+**Ran**
+- Three A40 pods (Secure Cloud; two in CA-MTL-1, one in EU-SE-1), all at commit `6388cf4`. Each runs `scripts/pod/phase3.sh` with `RESCORE=100`.
+- One pod runs seed 0 then M5 and the reference swaps (`EXTRA=1`); the other two run seeds 1 and 2.
+- Launched at 16:35 UTC. Each pod stops itself when its run ends, when nothing changes for 40 minutes, or after 15 hours. Three laptop watchers copy the outputs and the pods' logs.
+- Expected: about 12.5 hours and about $21.50. The 19-minute scoring passes (five per arm) explain most of the rise from the $19 quoted.
