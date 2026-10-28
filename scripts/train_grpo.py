@@ -269,6 +269,8 @@ def main() -> None:
             "confidence": sum(q for q, _ in stated) / len(stated) if stated else None,
             "confidence_right": sum(right) / len(right) if right else None,
             "confidence_wrong": sum(wrong) / len(wrong) if wrong else None,
+            # The sampled answers' Brier score on valid outputs: comparable across arms, unlike their rewards.
+            "brier": sum((q - c) ** 2 for q, c in stated) / len(stated) if stated else None,
             "stated": dict(Counter(f"{q:g}" for q, _ in stated).most_common(6)),
             # Groups whose answers are all right or all wrong: no signal for the correctness reward.
             "no_correctness_signal": sum(len(set(g["correct"])) == 1 for g in groups) / len(groups),

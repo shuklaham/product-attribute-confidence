@@ -219,3 +219,26 @@ The numbers are in `reports/phase1.md` and the run log. This section is about wh
 - One gap is visible already. When the text is redacted on held-out items, accuracy falls 7.2 points, the written confidence falls 0.5 points, and the letter probability falls 9.8. Making the written number react to missing evidence takes training on the number itself.
 
 Code: `scripts/report_phase1.py`, `src/pac/methods.py`. Results: `reports/phase1.md`.
+
+## 14. Training M3 and M4 with GRPO
+
+**The loop in one paragraph.** GRPO (group relative policy optimization) needs no value model and no learned reward model. For each prompt it samples a group of 8 answers from the current model and scores each with a fixed rule, the reward in `src/pac/rewards.py`. It then nudges the model toward the answers that scored above their group's average and away from those below. The nudge is a gradient step on the log-probability of every token an answer contains, weighted by that answer's *advantage*: its reward minus the group's mean reward.
+
+**Why groups need disagreement.** M3's reward is 1 for a right answer and 0 for a wrong one. If all 8 answers to a prompt are right, every advantage is 0, and that prompt teaches nothing. M1 is right about 98% of the time on seen categories, so at sampling temperature 1 only about 5.5% of dev prompts would get a mix of right and wrong answers (`scripts/signal_share.py`). So the prompts are sorted first. A sampling pass answers every training prompt 8 times and labels it *mixed* (some right, some wrong) or *settled*, and every batch takes half its prompts from each.
+
+**What M4 can learn that M3 cannot.** M4's reward also charges for the gap between the stated confidence and the outcome.
+- Two right answers stated at 0.95 and 0.80 earn 0.9975 and 0.96, so even a settled group teaches M4 something: when you are right, say so.
+- In a mixed group, a wrong answer stated at 0.95 earns −0.90 and one stated at 0.5 earns −0.25. So M4 learns to lower its confidence when it picks a doubtful letter.
+- It can do that because the model writes the letter before the number. When it writes the confidence, its own choice is already in its context.
+- A pool of only mixed prompts would teach M4 the doubt but never the certainty, which is why half of every batch is settled.
+
+**Three settings, and why.**
+- **No division by the group's spread.** Standard GRPO divides each advantage by the standard deviation of the group's rewards. In M4's settled groups, the rewards differ by thousandths (0.9975 against 0.9996). Dividing by that tiny spread would turn them into updates as large as the gap between a right and a wrong answer. Centring on the mean alone keeps every update proportional to how much better or worse the answer actually was.
+- **No KL term.** Many GRPO setups also penalize drifting from the starting model. Here each batch is sampled fresh from the current policy and used for one update, and the run is a few hundred steps of a LoRA that starts at M1. The penalty would mainly cost an extra forward pass through a reference model, about a quarter of the compute.
+- **Temperature 1, no top-k or top-p.** The update treats the samples as draws from the model's own distribution. Qwen's default sampling (top-k 20, top-p 0.8) would cut that distribution, and the math would no longer hold.
+
+**The check before training.** The update assumes its log-probabilities are those of the policy that sampled. Two things can break that silently.
+- Generation settings can change the distribution. The check confirms that the sampler's processed scores equal its raw logits.
+- The training forward pass can see the tokens differently from the sampler, through padding, position encodings or the image-token markers. The check confirms that the training forward reproduces the sampler's log-probabilities to within bf16 rounding.
+
+Code: `src/pac/grpo.py`, `scripts/sample_pool.py`, `scripts/train_grpo.py`. Tests: `tests/test_grpo.py`.
