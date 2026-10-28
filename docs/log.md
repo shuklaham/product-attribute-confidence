@@ -277,3 +277,17 @@ Milestone 2 is complete.
 - Milestone 4 needs a learning signal. M1 is about 98% right on seen categories, so most groups of 8 sampled answers will be all right and teach nothing. Measure that share before any RL run, and set the data mix and sampling temperature on dev only.
 - Re-check TRL issue #6294 (vLLM with multimodal prompts) before choosing how GRPO generates its samples.
 - For the author, optional: the blind review in the app (73 items left).
+
+## 2026-10-28: Milestone 4, GRPO for M3 and M4
+
+**Pod and the self-stop checks, before any work**
+- One A40 pod (Runpod Secure Cloud, CA-MTL-1, CUDA 13.2 host), with a 20 GB volume disk at `/workspace` for every output.
+- Before anything was copied to it, the self-stop path was tested on the live pod.
+  - The key Runpod puts in the pod is refused by `runpodctl` 1.14 ("Unauthorized") and by the REST API (403), but accepted by the GraphQL API for that pod.
+  - The first version of `scripts/pod/selfstop.sh` used `runpodctl`, so it would have failed exactly when it was needed. It now calls GraphQL.
+  - A `podStop` sent from inside the pod moved it to `EXITED`. It was started again, and a file written to `/workspace` before the stop was still there.
+- The whole safety chain then ran once end to end, with only the final stop as a dry run.
+  - The guard saw no file change for 30 seconds, recorded why, and waited.
+  - The laptop watcher saw the end, copied the outputs, checked them against checksums made on the pod, and marked them copied, within 70 seconds.
+  - The guard then stopped at once instead of waiting out its full copy window.
+- Pushes send only git-tracked files and the git history, so `.env` and `private/` cannot reach a pod; both were confirmed absent on it.
