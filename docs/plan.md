@@ -61,6 +61,12 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-26 | The primary comparison becomes M4 against M2-logit; M4 against M2 becomes secondary; M1 stays plain SFT (author's decision, before any training) | The base model states 0.95 on nearly every answer, and SFT with the confidence value left out of the loss will most likely keep that habit, so a Platt map on M1's stated confidence would turn a constant into another constant. Temperature-scaled letter probabilities are the strongest cheap fix: on the base model they rank answers with AUROC 0.92–0.98. The question becomes whether RL can make the stated confidence as informative as what the model already holds internally, under shift |
 | 2026-10-26 | Keep word list v1. "Vest" and a lone "three quarter", which the model-based check flagged, are not added | In train and dev, "vest" appears in 22 redacted sleeve items and only 9 are sleeveless; a lone "three quarter" mostly describes trousers (1 of 5 is three-quarter sleeves). They are correlates, not statements |
 | 2026-10-28 | GPU pods stop themselves. The run script stops its pod when it finishes and after a time limit; outputs are written to the pod's volume disk, which a stop keeps; the laptop checks progress with short SSH calls that retry, then copies the outputs back and deletes the pod | The Milestone 3 pod finished its work in 4 hours and then billed 33 more hours idle (about $19.50 of the $21.74 spent so far). The only watcher was one SSH connection, which dropped with the laptop's network. A stopped pod bills only its volume disk |
+| 2026-10-28 | GRPO samples from two strata, half of each batch from each: prompts whose 8 sampled M1 answers disagree (mixed) and the rest (settled). This replaces "only mixed prompts" | On dev, M1's letter probabilities predict that only 5.5% of groups at temperature 1 hold both right and wrong answers (`scripts/signal_share.py`). An unfiltered pool would give the correctness reward no signal in about 95% of groups, past the 80% stop line. A mixed-only pool fixes that for M3 but would never show M4 an easy item, so its Brier term would learn when to doubt but not when to be sure, the wrong lesson for the roughly 90% of held-out answers that are right. Half and half gives M3 signal in at least half the groups and keeps both lessons for M4 |
+| 2026-10-28 | Sample at temperature 1 | The model's own distribution. A higher temperature would enlarge the mixed stratum (21% at 1.5, 46% at 2.0 on dev) by training on answers the model would not give, and add format errors |
+| 2026-10-28 | Advantage = reward minus the group mean, with no division by the group's standard deviation (as in Dr. GRPO); no KL term | In a group of right answers, M4's rewards differ only through the stated confidence, by thousandths. Dividing by their tiny spread would make those differences full-size updates, as large as a right-versus-wrong gap. The unscaled advantage keeps every update proportional to its reward difference. With one update per batch on fresh samples and a short run, the KL term mainly costs a reference forward pass (about a quarter of the compute); recent GRPO recipes drop it too |
+| 2026-10-28 | Steps: 3 passes over the mixed stratum, at most 500; learning rate 1e-5, untuned | The mixed stratum is small, about 425 prompts if training items behave like dev. Each pass draws fresh samples, but more passes over the same few hundred prompts invite overfitting. The learning rate is an order of magnitude below the SFT rates, the usual gap for policy gradients, which are noisier; there is no budget to tune it |
+| 2026-10-28 | Our own GRPO loop rather than TRL's trainer | TRL's multimodal path had the vLLM bug (#6294), and it has not been shown to pass Qwen3-VL's image-token markers under transformers 5.19, which SFT needed. The loop is about 300 lines: it samples with the model's own `generate`, and a check compares its training log-probabilities with the sampler's. It also skips groups whose advantages are all zero exactly |
+| 2026-10-28 | Train and evaluate M4 before M3 | M4 is in the primary comparison; if the run is cut short, that result is ready first |
 
 ## 3. Data
 
@@ -152,12 +158,19 @@ One more comparator is reported separately: **M5** (Milestone 5), SFT on measure
 
 **SFT.** LoRA rank 16 on the language model's attention and MLP projections, with target modules named explicitly so the vision encoder stays untouched. The learning rate is picked from {5e-5, 1e-4, 2e-4} on dev. The loss covers the answer letter and the JSON syntax; the confidence value is masked out of the loss, because the catalog has no true confidence to copy. Format validity is checked on dev before the protocol is frozen.
 
-**GRPO.**
-- 8 samples per prompt, temperature 1.0, at most 32 completion tokens, about 500 steps of 8 prompts.
-- Prompts: training items where M1's sampled answers are neither all right nor all wrong, measured once by sampling M1 before RL; the same pool for both arms.
-- Invalid output gets a reward of −1.1 in both arms.
-- M3 and M4 share every setting except the reward: starting checkpoint, data order, seeds, steps, KL coefficient and advantage normalization.
-- Logged per run: correctness and calibration terms separately, confidence histograms, the share of groups where all 8 rewards are equal (no learning signal), KL, gradient norms and throughput.
+**GRPO** (settled 2026-10-28, before any RL run; reasons in the decision log).
+- **Prompts:** each training item once, as SFT's second pass presents it (its seeded condition and option order).
+- **Strata:** before RL, M1 answers every prompt 8 times at temperature 1 (`scripts/sample_pool.py`). A prompt is *mixed* if those answers are partly right and partly wrong, and *settled* otherwise.
+- **Batches:** each step takes 4 mixed and 4 settled prompts, in a seeded order that both arms share.
+- **Sampling:** 8 samples per prompt at temperature 1, from the full distribution (no top-k or top-p), with at most 48 completion tokens, the evaluation budget.
+- **Steps:** enough for 3 passes over the mixed prompts (3 × mixed / 4), at most 500.
+- **Advantage:** a sample's reward minus its group's mean, not divided by the group's standard deviation. Groups whose advantages are all zero are skipped.
+- **No KL term:** one update per batch, on samples from the same policy.
+- **Optimizer:** the LoRA starts as M1's adapter, with dropout off. AdamW at learning rate 1e-5 after 10 warm-up steps, betas (0.9, 0.99), no weight decay, gradients clipped at 1.
+- **Invalid output** gets a reward of −1.1 in both arms.
+- **Shared settings:** M3 and M4 share everything except the reward: starting checkpoint, prompts, data order, sampling seeds, steps and optimizer. M4 runs first.
+- **Logged every step:** reward, accuracy, invalid rate, stated confidence overall and for right and wrong answers, the stated-value histogram, the share of groups with no correctness signal, groups trained, gradient norm, time and memory.
+- **Before the long runs:** a check on a few prompts prints decoded rollouts with their rewards in both arms. It also confirms that sampling used the plain distribution, and that the training forward scores sampled tokens as the sampler did.
 
 ## 7. Evaluation
 
