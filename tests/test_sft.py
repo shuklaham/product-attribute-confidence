@@ -64,3 +64,15 @@ def test_only_tokens_overlapping_the_value_are_masked():
     kept = "".join(chr(t) for t in labels if t not in (-100, 151645))
     assert kept == re.sub(r"0\.95", "", text)
     assert labels[-1] == 151645  # learning to stop
+
+
+def test_calibrated_labels_learn_the_confidence_always_and_the_answer_only_when_right():
+    from pac.sft import calibrated_labels
+
+    text, span = target_text("B", "0.31")
+    tokens = [(ord(c), (i, i + 1)) for i, c in enumerate(text)] + [(151645, (len(text), len(text)))]
+    ids, offsets = [t for t, _ in tokens], [o for _, o in tokens]
+    right, mask = calibrated_labels(ids, offsets, span, correct=1)
+    assert right == ids and "".join(chr(t) for t, m in zip(ids, mask) if m) == "0.31"
+    wrong, _ = calibrated_labels(ids, offsets, span, correct=0)
+    assert "".join(chr(t) for t in wrong if t != -100) == "0.31"

@@ -4,7 +4,18 @@ import pytest
 from conftest import make_product
 
 from pac.examples import make_example
-from pac.grpo import EPOCH, advantages, prompts, schedule, steps_for, stratum
+from pac.grpo import (
+    EPOCH,
+    advantages,
+    expected_signal,
+    prompts,
+    schedule,
+    steps_for,
+    strata_from_scores,
+    stratum,
+    window_seed,
+    windows,
+)
 from pac.rewards import calibration_reward
 from pac.sft import condition_for, presentation_epoch, presentations
 
@@ -77,3 +88,29 @@ def test_advantages_are_centred_but_not_scaled():
     # An all-right M4 group: the confidence differences stay as small as they are.
     rewards = [calibration_reward(True, q) for q in (0.95, 0.95, 0.98, 0.9)]
     assert max(abs(a) for a in advantages(rewards)) < 0.01
+
+
+def test_expected_signal_matches_simulation():
+    import random
+    rng = random.Random(0)
+    for p in (0.5, 0.9, 0.99):
+        mixed = sum(0 < sum(rng.random() < p for _ in range(8)) < 8 for _ in range(20_000)) / 20_000
+        assert expected_signal(p) == pytest.approx(mixed, abs=0.01)
+    assert expected_signal(1.0) == expected_signal(0.0) == 0.0
+
+
+def test_strata_from_scores_use_the_threshold_and_never_leave_a_batch_short():
+    scores = {"a": 0.5, "b": 0.97, "c": 0.999, "d": 0.01, "e": 1.0}
+    # Expected signal: a 0.99, b 0.22, c 0.008, d 0.077, e 0.
+    pool = strata_from_scores(scores, threshold=0.2, minimum=1)
+    assert pool == {"mixed": ["a", "b"], "settled": ["d", "c", "e"]}
+    # With too few prompts over the threshold, the most uncertain ones fill the mixed stratum.
+    pool = strata_from_scores(scores, threshold=0.2, minimum=4)
+    assert pool["mixed"] == ["a", "b", "d", "c"] and pool["settled"] == ["e"]
+
+
+def test_windows_cover_every_step_once():
+    assert windows(461, 50)[:2] == [(0, 50), (50, 100)] and windows(461, 50)[-1] == (450, 461)
+    covered = [s for start, end in windows(461, 50) for s in range(start, end)]
+    assert covered == list(range(461))
+    assert window_seed(0, 3) != window_seed(1, 3) and window_seed(2, 0) != window_seed(2, 1)
