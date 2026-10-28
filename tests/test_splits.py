@@ -2,9 +2,9 @@ from collections import Counter, defaultdict
 
 from conftest import make_product
 
-from pac.splits import (CROSSING_SPLIT, DROPPED_LABEL, FAMILY_DISAGREEMENT, HELD_OUT_SPLIT, NO_USABLE_PHOTO,
-                        TEXT_CONFLICT, UNSUPPORTED_LABEL, assign_splits, bucket, families, label_rows,
-                        usable_photos)
+from pac.splits import (CROSSING_SPLIT, DROPPED_LABEL, FAMILY_DISAGREEMENT, HELD_OUT_SPLIT, INSPECTED,
+                        NO_USABLE_PHOTO, TEST_SPLITS, TEXT_CONFLICT, UNSUPPORTED_LABEL, assign_splits, bucket,
+                        families, label_rows, usable_photos)
 
 
 def test_families_join_colour_variants_transitively():
@@ -12,6 +12,18 @@ def test_families_join_colour_variants_transitively():
     family = families(products)
     assert family[5] == family[7] == family[9] == 5
     assert family[4] == 4
+
+
+def test_byte_identical_photos_join_one_family_and_one_split():
+    # The catalog lists some garments twice under different IDs, with no colour link (data review).
+    products = [make_product(i) for i in range(1, 400)]
+    hashes = {i: f"photo-{i // 2}" for i in range(1, 400)}  # 2 and 3 share a photo, 4 and 5, ...
+    family = families(products, hashes)
+    splits = assign_splits(products, family)
+    for i in range(2, 398, 2):
+        assert family[i] == family[i + 1] == i
+        assert splits[i].split == splits[i + 1].split
+    assert family[1] == 1
 
 
 def test_buckets_are_deterministic_and_proportional():
@@ -73,6 +85,31 @@ def test_label_exclusion_reasons(ontology):
     assert rows[(6, "neckline")].included
 
 
+def test_a_dropped_value_makes_the_family_disagree(ontology):
+    train_like = [make_product(i, neck="Round Neck") for i in range(1000, 1100)]
+    products = train_like + [make_product(1, neck="Round Neck", siblings=[2]), make_product(2, neck="Halter Neck")]
+    rows, _ = _rows(products, ontology)
+    assert rows[(1, "neckline")].reason == FAMILY_DISAGREEMENT
+    assert rows[(2, "neckline")].reason == DROPPED_LABEL
+
+
+def test_the_variant_name_is_not_evidence(ontology):
+    # The model never sees the variant name, so it cannot make the text agree or conflict.
+    rows, _ = _rows([make_product(1, neck="Round Neck", variant="V-Neck Tee")], ontology)
+    assert rows[(1, "neckline")].text_status == "silent"
+
+
+def test_inspected_items_never_reach_a_test_set(ontology):
+    products = [make_product(i) for i in range(1, 300)] + [make_product(i, "Kurtas") for i in range(300, 340)]
+    splits = assign_splits(products, families(products))
+    inspected = {(pid, "neckline") for pid in splits}
+    rows = {r.product_id: r for r in label_rows(products, splits, ontology, None, inspected)
+            if r.attribute == "neckline"}
+    assert {s.split for s in splits.values()} >= {"train", "test", HELD_OUT_SPLIT}
+    for pid, s in splits.items():
+        assert (rows[pid].reason == INSPECTED) == (s.split in TEST_SPLITS)
+
+
 def test_products_without_a_usable_photo_are_excluded(ontology):
     products = [make_product(1), make_product(2), make_product(3)]
     photos = [{"product_id": "1", "status": "ok", "width": "1080", "height": "1440"},
@@ -93,6 +130,12 @@ def test_roll_up_sleeves_only_leave_the_sleeve_task(ontology):
     rows, _ = _rows(products, ontology)
     assert rows[(1, "sleeve_length")].reason == rows[(2, "sleeve_length")].reason == "roll_up_sleeves"
     assert rows[(2, "neckline")].included
+
+
+def test_catalog_roll_up_styling_leaves_the_sleeve_task(ontology):
+    rows, _ = _rows([make_product(1, sleeve="Long Sleeves", styling="Roll-Up Sleeves")], ontology)
+    assert rows[(1, "sleeve_length")].reason == "roll_up_sleeves"
+    assert rows[(1, "neckline")].included
 
 
 def test_labels_named_only_through_the_brand_do_not_conflict(ontology):

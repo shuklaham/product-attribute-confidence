@@ -10,13 +10,18 @@ PRODUCT = make_product(
 
 
 def _example(attribute, condition, label="Boat neck"):
-    return make_example(PRODUCT, attribute, label, "dev", 424242, condition)
+    return make_example(PRODUCT, attribute, label, "dev", 424242, condition, text_status="agrees", clean=True)
 
 
 def test_options_cover_every_kept_label_once(neckline):
     example = _example(neckline, "full")
     assert sorted(o["label"] for o in example["options"]) == sorted(neckline.label_names)
     assert [o["letter"] for o in example["options"]] == list("ABCDEFGHI")
+
+
+def test_examples_carry_the_text_status_and_the_clean_flag(neckline):
+    example = _example(neckline, "full")
+    assert (example["text_status"], example["clean"]) == ("agrees", True)
 
 
 def test_answer_letter_points_to_the_reference(neckline):

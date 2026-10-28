@@ -1,7 +1,9 @@
-# Label set v0. Every option shown to the model and every scored label comes from here.
+# Label set v1. Every option shown to the model and every scored label comes from here.
 # Phrases are case-insensitive regular expressions. They are used to detect labels named in
-# product text (kept labels only) and to redact text (kept and dropped labels).
-version: v0
+# product text (kept labels only) and to redact text (kept and dropped labels, plus the
+# redaction cues). v1 adds the abbreviations, misspellings and cues the data review found
+# (2026-10-25).
+version: v1
 
 # Test and held-out items need at least this many training examples of their label.
 min_train_support: 30
@@ -10,11 +12,13 @@ attributes:
   neckline:
     source_field: Neck
     question: Which neckline does this product have?
-    # Any mention of the attribute. Redaction drops a clause that still contains one.
-    attribute_words: '\bneck(?:line|lines|s)?\b|\bcollar(?:ed|s)?\b'
-    # Used on the title and the leading noun phrase, where dropping the whole clause would
-    # also drop the product type.
-    head_fallback: '\b[\w/-]+[- ](?:neck(?:line|ed)?|collar(?:ed)?)\b|\bneck(?:line)?\b|\bcollar(?:ed)?\b'
+    # Any mention of the attribute, misspellings included ("necklne", "necline", "neckine"). Redaction
+    # drops a clause that contains one.
+    attribute_words: '\bneck(?:line|lines|s)?\b|\bnec?k?l?i?nes?\b|\bcollar(?:ed|s|less)?\b'
+    # Words that describe the attribute. In the title and the leading noun phrase, where dropping
+    # the clause would also drop the product type, a mention is removed together with the words
+    # before it, back to the earliest of these within three words ("Round Red Neck"), or one word.
+    head_modifiers: '(?:round|crew|v|scoop(?:ed)?|u|deep|boat|bateau|square|mandarin|chinese|band|nehru|polo|shirt|spread|button[- ]?down|cowl|high|mock|turtle|keyhole|henley|halter|sweetheart|tie[- ]?up|notch(?:ed)?|wide|shawl)'
     labels:
       - name: Round neck
         definition: A rounded neckline that sits close to the base of the neck.
@@ -57,23 +61,27 @@ attributes:
     dropped:
       - reason: strap or shoulder style, not a neckline shape
         raw_values: [Shoulder Straps, Strapless, Off-Shoulder, One Shoulder, Halter Neck]
-        phrases: ['\bshoulder[- ]straps?\b', '\bspaghetti\b', '\bstrappy\b', '\bstrapless\b', '\btube\b',
-                  '\boff[- ]?(?:the[- ])?shoulder\b', '\bone[- ]shoulder\b', '\bhalter\b']
+        phrases: ['\bshoulder[- ]straps?\b', '\bstraps?\b', '\bstrapped\b', '\bsp(?:h?a|e)g+h?e+t+i\b', '\bstrappy\b',
+                  '\bstrapless\b', '\btube\b', '\boff[- ]?(?:the[- ])?shoulder\b', '\bone[- ]shoulder\b', '\bhalter\b']
       - reason: too rare, or not shared between seen and held-out categories
         raw_values: [Tie-Up Neck, High Neck, Mock Neck, Keyhole Neck, Henley Neck, Hood]
         phrases: ['\btie[- ]?up\b', '\bhigh[- ]?neck(?:ed)?\b', '\bturtle[- ]?neck\b', '\bmock[- ]?neck\b',
-                  '\bkeyhole\b', '\bhenley\b', '\bhood(?:ed|ie)?\b', '\bsweetheart\b']
+                  '\bkeyhole\b', '\bhenley\b', '\bhood(?:ed|ie|y)?\b', '\bsweetheart\b']
 
   sleeve_length:
     source_field: Sleeve Length
     question: What sleeve length does this product have?
-    attribute_words: '\bsleeve(?:s|d|less)?\b'
-    head_fallback: '\b[\w/-]+[- ]sleeve[sd]?\b|\bsleeve(?:s|d|less)?\b'
+    # Every word containing "leev" in the catalog is about sleeves, misspellings included
+    # ("sleevless", "leeveless", "sleevesless"), and so are "slevees" and "slv".
+    attribute_words: '\b\w*le{2,}v\w*\b|\bslev\w*\b|\bslv\b'
+    head_modifiers: '(?:short|half|cap|three|quarter|fourth|3/4(?:th)?|elbow|long|full|length|no|roll(?:ed)?|puff(?:ed)?|bell|raglan|kimono|batwing|flutter|extended)'
     labels:
       - name: Short sleeves
         definition: Sleeves that end above the elbow.
         raw_values: [Short Sleeves]
-        phrases: ['\bshort[- ]sleeve[sd]?\b', '\bhalf[- ]sleeve[sd]?\b', '\bcap[- ]sleeve[sd]?\b']
+        # SS and HS (half sleeves) appear in brand titles; every catalog use is short sleeves.
+        phrases: ['\bshort[- ]sleeve[sd]?\b', '\bhalf[- ]sleeve[sd]?\b', '\bcap[- ]sleeve[sd]?\b',
+                  '\b(?:ss|hs|s/s)\b']
       - name: Three-quarter sleeves
         definition: Sleeves that end between the elbow and the wrist.
         raw_values: [Three-Quarter Sleeves]
@@ -84,21 +92,28 @@ attributes:
       - name: Long sleeves
         definition: Sleeves that reach the wrist.
         raw_values: [Long Sleeves]
-        phrases: ['\blong[- ]sleeve[sd]?\b', '\bfull[- ]sleeve[sd]?\b']
+        # LS and FS (full sleeves) appear in brand titles; every catalog use is long sleeves.
+        phrases: ['\blong[- ]sleeve[sd]?\b', '\bfull[- ]sleeve[sd]?\b', '\b(?:ls|fs|l/s)\b']
       - name: Sleeveless
         definition: No sleeves; the armhole is finished at the shoulder.
         raw_values: [Sleeveless, No Sleeves]
         # Strap styles describe a garment without sleeves, so they count as evidence too. "armholes" is
         # left out: sleeved tops mention armholes as well (hand check, 2026-10-25).
-        phrases: ['\bsleeveless\b', '\bno sleeves?\b', '\btank\b', '\bcami(?:sole)?s?\b', '\bspaghetti\b',
-                  '\bstrappy\b', '\bstrapless\b', '\btube\b', '\bhalter\b', '\bracer(?:[- ]?back)?\b',
-                  '\bshoulder[- ]straps?\b', '\bstraps\b']
+        phrases: ['\bs?lee?ve?s?les+\b', '\bno sleeves?\b', '\b(?:sless|s/l)\b', '\btank\b', '\bcami(?:sole)?s?\b',
+                  '\bsp(?:h?a|e)g+h?e+t+i\b', '\bstrappy\b', '\bstrapless\b', '\btube\b', '\bhalter\b',
+                  '\bracer\b', '\brace?r?[- ]?back\b', '\bshoulder[- ]straps?\b', '\bstraps\b']
     dropped: []
+    # Words that point to a value without naming a label: removed in redaction only, since they are too
+    # loose for label matching. Sleeved tops mention armholes too, but most items that do are sleeveless.
+    redaction_cues: ['\barm[- ]?holes?\b', '\bstrap(?:ped)?\b']
     # Sleeves made to be worn rolled up are usually photographed rolled, so their length depends on a
     # convention rather than on what the photo shows. Products whose text describes them are left out of
     # this task in every split (decision 2026-10-25, from the hand check).
+    # A roll-up phrase counts only near "sleeve" or "cuff", so "denims rolled up to the ankle" does not.
     exclude_if:
       reason: roll_up_sleeves
-      phrases: ['\broll(?:ed)?[- ]?up\b', '\broll[- ]?tabs?\b', '\btabbed sleeves?\b',
+      raw_values: {Sleeve Styling: [Roll-Up Sleeves]}
+      phrases: ['\broll(?:ed)?[- ]?up\b(?=[^.;]{0,40}\b(?:sleeve|cuff))', '\b(?:sleeve|cuff)\w*\b[^.;]{0,40}\broll(?:ed)?[- ]?up\b',
+                '\broll[- ]?tabs?\b', '\btabbed sleeves?\b',
                 '\b(?:button(?:ed)?|sleeve)[- ]tabs?\b', '\bmid[- ]?(?:arm|sleeve)\b',
                 '\bfold[- ]?over sleeves?\b', '\bturn[- ]?up sleeves?\b', '\bconvertible sleeves?\b']

@@ -1,4 +1,4 @@
-"""Colour-variant families, frozen split assignment and per-attribute label decisions."""
+"""Product families, frozen split assignment and per-attribute label decisions."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from .ontology import DROPPED, UNLABELED, UNMAPPED, Ontology
+from .ontology import DROPPED, OK, UNLABELED, UNMAPPED, Ontology
 from .records import Product
 from .text import mask_brand
 
@@ -17,6 +17,7 @@ BUCKETS = (("train", 70), ("dev", 10), ("cal_fit", 5), ("cal_threshold", 5), ("t
 HELD_OUT_SPLIT = "heldout_test"
 CROSSING_SPLIT = "excluded_crossing"
 EVAL_SPLITS = ("dev", "cal_fit", "cal_threshold", "test", HELD_OUT_SPLIT)
+TEST_SPLITS = ("test", HELD_OUT_SPLIT)
 SALT = "splits-v0"
 
 # A usable photo needs at least this many pixels on its long side.
@@ -25,16 +26,25 @@ MIN_PHOTO_LONG_SIDE = 480
 # Exclusion reasons, in order of precedence. An attribute's own text-based exclusion, such as
 # roll_up_sleeves for sleeve length, comes from configs/ontology.yaml and ranks after UNMAPPED_VALUE.
 CROSSING_FAMILY = "crossing_family"
+INSPECTED = "inspected_test_item"
 NO_USABLE_PHOTO = "no_usable_photo"
 DROPPED_LABEL = "dropped_label"
 UNMAPPED_VALUE = "unmapped_value"
 FAMILY_DISAGREEMENT = "family_disagreement"
 TEXT_CONFLICT = "text_conflict"
 UNSUPPORTED_LABEL = "unsupported_label"
+# Exclusions that only reflect label noise. Test items excluded for these reasons alone are still
+# scored in the "all labeled items" results.
+TEST_CONFLICT_REASONS = (TEXT_CONFLICT, FAMILY_DISAGREEMENT)
 
 
-def families(products: list[Product]) -> dict[int, int]:
-    """Map product ID to family ID: the smallest product ID among linked colour variants."""
+def families(products: list[Product], photo_hashes: dict[int, str] | None = None) -> dict[int, int]:
+    """Map product ID to family ID: the smallest product ID among linked products.
+
+    Products are linked when they are colour variants of each other, or when their photos are
+    byte-identical: the catalog lists some garments twice under different IDs without a colour
+    link, and those duplicates must share a split.
+    """
     parent = {p.id: p.id for p in products}
 
     def find(x):
@@ -43,12 +53,19 @@ def families(products: list[Product]) -> dict[int, int]:
             x = parent[x]
         return x
 
+    def union(x, y):
+        a, b = find(x), find(y)
+        if a != b:
+            parent[max(a, b)] = min(a, b)
+
     for p in products:
         for s in p.siblings:
             if s in parent:
-                a, b = find(p.id), find(s)
-                if a != b:
-                    parent[max(a, b)] = min(a, b)
+                union(p.id, s)
+    first_with_photo = {}
+    for pid, digest in sorted((photo_hashes or {}).items()):
+        if pid in parent:
+            union(first_with_photo.setdefault(digest, pid), pid)
     return {pid: find(pid) for pid in parent}
 
 
@@ -101,8 +118,8 @@ class LabelRow:
 
 
 def matching_text(product: Product) -> str:
-    """Listing text used to detect named labels. The brand is masked."""
-    return mask_brand(" ".join((product.title, product.variant, product.description)), product.brand)
+    """The text the model sees, used to detect named labels. The brand is masked."""
+    return mask_brand(" ".join((product.title, product.description)), product.brand)
 
 
 def text_status(attribute, label: str | None, text: str) -> str:
@@ -120,9 +137,18 @@ def usable_photos(photo_rows: list[dict]) -> set[int]:
             if r["status"] == "ok" and max(int(r["width"]), int(r["height"])) >= MIN_PHOTO_LONG_SIDE}
 
 
+def photo_hashes(photo_rows: list[dict]) -> dict[int, str]:
+    """Product ID to the sha256 of its original photo file, from photos.csv rows."""
+    return {int(r["product_id"]): r["sha256"] for r in photo_rows if r.get("sha256")}
+
+
 def label_rows(products: list[Product], splits: dict[int, SplitRow], ontology: Ontology,
-               photo_ok: set[int] | None = None) -> list[LabelRow]:
-    """Label decisions per (product, attribute). photo_ok=None skips the photo rule."""
+               photo_ok: set[int] | None = None, inspected: set[tuple[int, str]] = frozenset()) -> list[LabelRow]:
+    """Label decisions per (product, attribute). photo_ok=None skips the photo rule.
+
+    inspected holds the (product, attribute) pairs a reviewer has looked at. Any that lands in a
+    test split is excluded from every test set, since looking at it could have shaped a decision.
+    """
     by_id = {p.id: p for p in products}
     drafts = []
     family_labels = defaultdict(set)
@@ -134,16 +160,20 @@ def label_rows(products: list[Product], splits: dict[int, SplitRow], ontology: O
             label, outcome = attribute.canonical(raw)
             if outcome == UNLABELED:
                 continue
-            ambiguous = attribute.excluded_by_text(text)
+            ambiguous = attribute.excluded_by_text(text) or attribute.excluded_by_catalog(product.raw_labels)
             drafts.append((pid, key, str(raw).strip(), label or "", outcome, text_status(attribute, label, text),
                            ambiguous))
-            if label:
-                family_labels[(split_row.family_id, key)].add(label)
+            # A dropped value counts too: a family listing one variant as round neck and another as
+            # halter neck disagrees about the garment.
+            if outcome in (OK, DROPPED):
+                family_labels[(split_row.family_id, key)].add(label or f"dropped: {str(raw).strip()}")
 
     def reason(pid, key, outcome, status, ambiguous):
         split_row = splits[pid]
         if split_row.split == CROSSING_SPLIT:
             return CROSSING_FAMILY
+        if split_row.split in TEST_SPLITS and (pid, key) in inspected:
+            return INSPECTED
         if photo_ok is not None and pid not in photo_ok:
             return NO_USABLE_PHOTO
         if outcome == DROPPED:

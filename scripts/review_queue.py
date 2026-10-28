@@ -1,12 +1,13 @@
 """Prepare the hand-check queue for review: a text sheet and photo contact sheets.
 
-For each queued product it writes the catalog label, the label the description names, and the
+The queue is the frozen sample in annotations/hand_check_queue_v0.csv. For each queued product
+it writes the catalog label, the label the description names, and the
 sentence that names it to <out_dir>/queue.csv. It also writes contact sheets of the photos,
 six per sheet and numbered to match the CSV, to <out_dir>/sheet_NN.jpg. Output stays under
 data/ (gitignored) because it contains product text and photos.
 
 Usage:
-    uv run python -I scripts/review_queue.py <styles_dir> <manifest_dir> <image_dir> <out_dir>
+    uv run python -I scripts/review_queue.py <styles_dir> <manifest_dir> <image_dir> <out_dir> [queue.csv]
 """
 
 import csv
@@ -17,7 +18,6 @@ from PIL import Image, ImageDraw
 
 from pac import ontology as ontology_module
 from pac.records import load_products
-from pac.review import hand_check_queue
 from pac.text import mask_brand
 
 TILE_W, TILE_H, CAPTION = 384, 512, 30
@@ -38,7 +38,8 @@ def snippet(text: str, attribute, label: str, width: int = 70) -> str:
     return ""
 
 
-def main(styles_dir: str, manifest_dir: str, image_dir: str, out_dir: str) -> None:
+def main(styles_dir: str, manifest_dir: str, image_dir: str, out_dir: str,
+         queue_csv: str = "annotations/hand_check_queue_v0.csv") -> None:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     ontology = ontology_module.load()
@@ -49,7 +50,8 @@ def main(styles_dir: str, manifest_dir: str, image_dir: str, out_dir: str) -> No
         labels = list(csv.DictReader(f))
     rows = [dict(r, split=splits[int(r["product_id"])]["split"]) for r in labels]
     by_key = {(int(r["product_id"]), r["attribute"]): r for r in rows}
-    queue = hand_check_queue(rows)
+    with open(queue_csv, newline="", encoding="utf-8") as f:
+        queue = [(int(r["product_id"]), r["attribute"]) for r in csv.DictReader(f)]
 
     with open(out / "queue.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -57,10 +59,10 @@ def main(styles_dir: str, manifest_dir: str, image_dir: str, out_dir: str) -> No
                          "snippet"])
         for k, (pid, key) in enumerate(queue, start=1):
             p, r, attribute = products[pid], by_key[(pid, key)], ontology.attributes[key]
-            text = mask_brand(" ".join((p.title, p.variant, p.description)), p.brand)
+            text = mask_brand(" ".join((p.title, p.description)), p.brand)
             named = sorted(attribute.named_labels(text) - {r["label"]})
             writer.writerow([k, pid, key, splits[pid]["category"], r["split"], r["label"], ", ".join(named), p.title,
-                             snippet(" ".join((p.title, p.variant, p.description)), attribute, r["label"])])
+                             snippet(" ".join((p.title, p.description)), attribute, r["label"])])
 
     per_sheet = COLUMNS * ROWS
     for sheet_index in range(0, len(queue), per_sheet):
@@ -79,4 +81,4 @@ def main(styles_dir: str, manifest_dir: str, image_dir: str, out_dir: str) -> No
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:6])

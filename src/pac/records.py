@@ -9,7 +9,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from .text import clean_html
+from .text import clean_html, clean_text
 
 
 @dataclass(frozen=True, eq=False)
@@ -51,7 +51,7 @@ def parse(record: dict, fallback_id: int) -> Product:
         id=int(data.get("id") or fallback_id),
         category=(data.get("articleType") or {}).get("typeName"),
         brand=(data.get("brandName") or "").strip(),
-        title=(data.get("productDisplayName") or "").strip(),
+        title=clean_text(data.get("productDisplayName")),
         variant=(data.get("variantName") or "").strip(),
         description=clean_html((descriptors.get("description") or {}).get("value")),
         raw_labels=dict(data.get("articleAttributes") or {}),

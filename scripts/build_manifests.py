@@ -1,11 +1,12 @@
 """Build the frozen split and label manifests from the style JSONs.
 
 The manifests hold product IDs, splits and label decisions only, never product text, so they
-can be committed. A fingerprint of the source files and the ontology hash are stored with
-them, so a later change to the data or the label set is visible.
+can be committed. A fingerprint of the source files, the ontology hash and the hash of the
+review annotations are stored with them, so a later change to any of them is visible. Every
+reviewed (product, attribute) pair that lands in a test split is excluded from the test sets.
 
 Usage:
-    uv run python scripts/build_manifests.py <styles_dir> <out_dir>
+    uv run python scripts/build_manifests.py <styles_dir> <out_dir> [annotations.csv]
 """
 
 import csv
@@ -17,25 +18,29 @@ from pathlib import Path
 
 from pac import ontology as ontology_module
 from pac.records import directory_fingerprint, load_products
-from pac.splits import BUCKETS, MIN_PHOTO_LONG_SIDE, SALT, assign_splits, families, label_rows, usable_photos
+from pac.splits import (BUCKETS, MIN_PHOTO_LONG_SIDE, SALT, assign_splits, families, label_rows, photo_hashes,
+                        usable_photos)
 
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def main(styles_dir: str, out_dir: str) -> None:
+def main(styles_dir: str, out_dir: str, annotations: str = "annotations/conflict_check.csv") -> None:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     ontology = ontology_module.load()
     products, failures = load_products(styles_dir)
-    splits = assign_splits(products, families(products))
     photos_path = out / "photos.csv"
-    photo_ok = None
+    photo_ok, hashes = None, {}
     if photos_path.exists():  # written by prepare_images.py
         with open(photos_path, newline="", encoding="utf-8") as f:
-            photo_ok = usable_photos(list(csv.DictReader(f)))
-    rows = label_rows(products, splits, ontology, photo_ok)
+            photo_rows = list(csv.DictReader(f))
+        photo_ok, hashes = usable_photos(photo_rows), photo_hashes(photo_rows)
+    splits = assign_splits(products, families(products, hashes))
+    with open(annotations, newline="", encoding="utf-8") as f:
+        inspected = {(int(r["product_id"]), r["attribute"]) for r in csv.DictReader(f)}
+    rows = label_rows(products, splits, ontology, photo_ok, inspected)
 
     with open(out / "products.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -59,6 +64,8 @@ def main(styles_dir: str, out_dir: str) -> None:
         "unreadable_records": failures,
         "products_in_scope": len(splits),
         "photo_rule": f"decodes and long side >= {MIN_PHOTO_LONG_SIDE} px" if photo_ok is not None else "not applied",
+        "family_links": "colour variants and byte-identical photos" if hashes else "colour variants",
+        "annotations_sha256": sha256_file(Path(annotations)),
         "included_labels": {f"{a}/{s}": n for (a, s), n in sorted(included.items())},
         "files": {name: sha256_file(out / name) for name in ("products.csv", "labels.csv", "photos.csv")
                   if (out / name).exists()},
@@ -68,4 +75,4 @@ def main(styles_dir: str, out_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(*sys.argv[1:4])

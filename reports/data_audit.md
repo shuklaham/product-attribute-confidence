@@ -1,6 +1,6 @@
-# Data audit: Myntra Fashion Product Images, ontology v0
+# Data audit: Myntra Fashion Product Images, ontology v1
 
-Parsed 44,446 records (0 unreadable); source fingerprint `f1352f4f7be4`, ontology `v0` (`1b76185bf82f`). 15,712 products are in the 3 seen and 8 held-out categories.
+Parsed 44,446 records (0 unreadable); source fingerprint `f1352f4f7be4`, ontology `v1` (`a3179ca26da6`). 15,712 products are in the 3 seen and 8 held-out categories.
 
 ## Coverage by category
 
@@ -24,29 +24,30 @@ Parsed 44,446 records (0 unreadable); source fingerprint `f1352f4f7be4`, ontolog
 
 | Outcome | Seen | Held-out |
 |---|---|---|
-| included | 6829 | 1236 |
-| text_conflict | 413 | 108 |
-| family_disagreement | 158 | 30 |
+| included | 6806 | 1232 |
+| text_conflict | 403 | 107 |
+| family_disagreement | 180 | 30 |
 | roll_up_sleeves | 0 | 0 |
 | dropped_label | 175 | 89 |
 | unmapped_value | 0 | 0 |
 | crossing_family | 16 | 4 |
 | no_usable_photo | 8 | 1 |
-| unsupported_label | 21 | 54 |
+| unsupported_label | 32 | 56 |
+| inspected_test_item | 0 | 3 |
 
 ### Included labels by split
 
 | Label | train | dev | cal_fit | cal_threshold | test | heldout_test |
 |---|---|---|---|---|---|---|
-| Round neck | 3304 | 503 | 232 | 310 | 509 | 707 |
-| V-neck | 237 | 43 | 18 | 18 | 29 | 336 |
-| Scoop neck | 69 | 8 | 7 | 7 | 4 | 2 |
+| Round neck | 3301 | 503 | 228 | 309 | 509 | 707 |
+| V-neck | 234 | 44 | 18 | 17 | 28 | 334 |
+| Scoop neck | 70 | 8 | 8 | 7 | 4 | 2 |
 | Boat neck | 31 | 0 | 5 | 0 | 4 | 33 |
-| Square neck | 15 | 0 | 0 | 0 | 0 | 0 |
+| Square neck | 14 | 0 | 0 | 0 | 0 | 0 |
 | Mandarin collar | 45 | 7 | 1 | 7 | 5 | 156 |
-| Polo collar | 959 | 148 | 67 | 68 | 112 | 0 |
-| Shirt collar | 16 | 0 | 0 | 0 | 0 | 0 |
-| Cowl neck | 30 | 7 | 2 | 0 | 2 | 2 |
+| Polo collar | 952 | 148 | 67 | 69 | 117 | 0 |
+| Shirt collar | 17 | 0 | 0 | 0 | 0 | 0 |
+| Cowl neck | 29 | 0 | 0 | 0 | 0 | 0 |
 
 ### Label-noise estimate
 
@@ -55,35 +56,39 @@ Share of mapped labels whose listing text names a different label. These are exc
 | Category | Mapped labels | Text names another label | Rate |
 |---|---|---|---|
 | Kurtis | 69 | 18 | 26% |
-| Tops | 1380 | 337 | 24% |
+| Tops | 1380 | 333 | 24% |
 | Night suits | 137 | 28 | 20% |
 | Dresses | 311 | 31 | 10% |
+| Sweaters | 25 | 2 | 8% |
 | Nightdress | 156 | 8 | 5% |
 | Sweatshirts | 80 | 4 | 5% |
 | Kurtas | 561 | 24 | 4% |
 | Tunics | 90 | 3 | 3% |
-| Tshirts | 6049 | 141 | 2% |
-| Sweaters | 25 | 0 | 0% |
+| Tshirts | 6049 | 144 | 2% |
 
 ### Included labels: does the text name the answer?
 
 | Side | Included | Text names the label | Text names no label |
 |---|---|---|---|
-| seen | 6829 | 85% | 15% |
-| held-out | 1236 | 78% | 22% |
+| seen | 6806 | 85% | 15% |
+| held-out | 1232 | 78% | 22% |
 
-### Guessing the most common label per category (no photo, no text)
+### Guessing the most common training label of the category (no photo, no text)
+
+Held-out categories have no training labels, so they get the most common training label overall.
 
 | Split | Included | Accuracy |
 |---|---|---|
-| test | 665 | 77% |
-| heldout_test | 1236 | 61% |
+| dev | 710 | 71% |
+| test | 667 | 76% |
+| heldout_test | 1232 | 57% |
 
 ### Redaction check (evaluation splits)
 
-- Redacted texts that still contain an attribute word or label phrase: 0 of 3,359.
+- Redacted texts that still contain an attribute word, label phrase or redaction cue outside the brand name: 0 of 3,345.
+- Redacted texts whose only such word is inside the brand name, kept by rule 4 (for example U.S. Polo Assn.): 56.
 - Descriptions that become empty: 0 (0%).
-- Median share of description length kept: 95%.
+- Median share of description length kept: 92%.
 - The stronger check, a text-only model on redacted dev text scoring near the category guess, runs in Milestone 2.
 
 ## Sleeve length
@@ -92,24 +97,25 @@ Share of mapped labels whose listing text names a different label. These are exc
 
 | Outcome | Seen | Held-out |
 |---|---|---|
-| included | 10069 | 1424 |
-| text_conflict | 234 | 67 |
-| family_disagreement | 71 | 16 |
-| roll_up_sleeves | 559 | 31 |
+| included | 10073 | 1424 |
+| text_conflict | 210 | 64 |
+| family_disagreement | 92 | 16 |
+| roll_up_sleeves | 556 | 31 |
 | dropped_label | 0 | 0 |
 | unmapped_value | 0 | 0 |
 | crossing_family | 16 | 6 |
 | no_usable_photo | 12 | 1 |
 | unsupported_label | 0 | 0 |
+| inspected_test_item | 2 | 3 |
 
 ### Included labels by split
 
 | Label | train | dev | cal_fit | cal_threshold | test | heldout_test |
 |---|---|---|---|---|---|---|
-| Short sleeves | 4977 | 771 | 348 | 426 | 716 | 472 |
-| Three-quarter sleeves | 93 | 14 | 10 | 4 | 9 | 280 |
-| Long sleeves | 1410 | 215 | 96 | 97 | 220 | 321 |
-| Sleeveless | 463 | 65 | 31 | 32 | 72 | 351 |
+| Short sleeves | 4984 | 777 | 349 | 434 | 711 | 472 |
+| Three-quarter sleeves | 90 | 14 | 10 | 4 | 9 | 280 |
+| Long sleeves | 1400 | 212 | 94 | 96 | 231 | 321 |
+| Sleeveless | 470 | 60 | 29 | 30 | 69 | 351 |
 
 ### Label-noise estimate
 
@@ -122,7 +128,7 @@ Share of mapped labels whose listing text names a different label. These are exc
 | Nightdress | 82 | 7 | 9% |
 | Tops | 1725 | 127 | 7% |
 | Night suits | 138 | 9 | 7% |
-| Shirts | 2957 | 105 | 4% |
+| Shirts | 2957 | 106 | 4% |
 | Kurtas | 624 | 21 | 3% |
 | Tunics | 103 | 2 | 2% |
 | Tshirts | 6263 | 66 | 1% |
@@ -133,26 +139,32 @@ Share of mapped labels whose listing text names a different label. These are exc
 
 | Side | Included | Text names the label | Text names no label |
 |---|---|---|---|
-| seen | 10069 | 73% | 27% |
+| seen | 10073 | 73% | 27% |
 | held-out | 1424 | 79% | 21% |
 
-### Guessing the most common label per category (no photo, no text)
+### Guessing the most common training label of the category (no photo, no text)
+
+Held-out categories have no training labels, so they get the most common training label overall.
 
 | Split | Included | Accuracy |
 |---|---|---|
-| test | 1017 | 85% |
-| heldout_test | 1424 | 61% |
+| dev | 1063 | 86% |
+| test | 1020 | 87% |
+| heldout_test | 1424 | 33% |
 
 ### Redaction check (evaluation splits)
 
-- Redacted texts that still contain an attribute word or label phrase: 0 of 4,550.
+- Redacted texts that still contain an attribute word, label phrase or redaction cue outside the brand name: 0 of 4,553.
+- Redacted texts whose only such word is inside the brand name, kept by rule 4 (for example U.S. Polo Assn.): 0.
 - Descriptions that become empty: 0 (0%).
-- Median share of description length kept: 97%.
+- Median share of description length kept: 96%.
 - The stronger check, a text-only model on redacted dev text scoring near the category guess, runs in Milestone 2.
 
-## Colour-variant families
+## Families
 
-- 12,452 families cover 15,712 in-scope products; 5,595 products (36%) share a family.
-- Family sizes (5 means 5 or more): 1: 10,117, 2: 1,824, 3: 319, 4: 113, 5: 79
+Families join colour variants and, with photos.csv, products whose photo files are byte-identical.
+
+- 11,881 families cover 15,712 in-scope products; 6,614 products (42%) share a family.
+- Family sizes (5 means 5 or more): 1: 9,098, 2: 2,167, 3: 413, 4: 121, 5: 82
 - Families spanning seen and held-out categories, excluded: 12.
 

@@ -64,6 +64,26 @@ def test_roll_up_sleeves_are_excluded_from_sleeve_length(neckline, sleeve):
     assert sleeve.exclusion_reason == "roll_up_sleeves"
 
 
+def test_abbreviations_and_misspellings_name_labels(sleeve):
+    # Every in-scope catalog use of these is the label shown (data review, 2026-10-25).
+    assert sleeve.named_labels("Nike Men Icon SS T-shirt") == {"Short sleeves"}
+    assert sleeve.named_labels("Palm Tree Girls Hs Livia Top") == {"Short sleeves"}
+    assert sleeve.named_labels("ADIDAS Men HT Drir G Ls Navy Blue Tshirts") == {"Long sleeves"}
+    assert sleeve.named_labels("Flying Machine Men FS Purple Shirts") == {"Long sleeves"}
+    assert sleeve.named_labels("Puma Men's Sless Black T-shirt") == {"Sleeveless"}
+    assert sleeve.named_labels("ADIDAS Men Torment S/L Blue T-Shirts") == {"Sleeveless"}
+    for text in ["blue sleevless top", "leeveless top", "sleevesless vest", "raceback top", "sphagetti straps"]:
+        assert sleeve.named_labels(text) == {"Sleeveless"}, text
+    assert sleeve.named_labels("from the SS13 collection") == set()
+
+
+def test_roll_up_needs_a_sleeve_or_cuff_nearby(sleeve):
+    assert not sleeve.excluded_by_text("Pair it with denims (rolled up to the ankle)")
+    assert sleeve.excluded_by_text("the sleeves can be rolled up and buttoned")
+    assert sleeve.excluded_by_catalog({"Sleeve Styling": "Roll-Up Sleeves"})
+    assert not sleeve.excluded_by_catalog({"Sleeve Styling": "Regular Sleeves"})
+
+
 def test_brand_names_are_not_evidence(neckline):
     text = "U.S. Polo Assn. Men Navy Round Neck T-shirt"
     assert "Polo collar" in neckline.named_labels(text)

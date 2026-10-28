@@ -1,9 +1,11 @@
-"""Review app for the product records and the frozen v0 manifests.
+"""Review app for the product records and the frozen v1 manifests.
 
 Browse products by split, category, label and label decision; compare the full and redacted
 text next to the photo; and work through the hand-check queue of sampled contradictions
 between the description and the catalog label. Verdicts are saved per reviewer to
-annotations/conflict_check.csv, so Claude's verdicts and yours can be compared.
+annotations/conflict_check.csv, so Claude's verdicts and yours can be compared. Claude's
+verdict on an item stays hidden until you have saved your own, and nothing is pre-selected,
+so your verdicts are independent of Claude's. Test splits never appear.
 
 Run from the repo root:
     uv run streamlit run app/review.py
@@ -22,12 +24,12 @@ import streamlit as st
 from pac import ontology as ontology_module
 from pac.records import load_products
 from pac.redact import redact_description, redact_title
-from pac.review import ANNOTATION_FIELDS, VERDICTS, hand_check_queue
-from pac.splits import matching_text
+from pac.review import ANNOTATION_FIELDS, REVIEW_SPLITS, VERDICTS, hand_check_queue
+from pac.splits import TEST_SPLITS, matching_text
 
 ROOT = Path(__file__).resolve().parents[1]
 STYLE_DIRS = [ROOT / "data" / "raw" / "kaggle" / "styles", ROOT / "data" / "raw" / "myntra_mirror" / "styles"]
-MANIFEST_DIR = ROOT / "manifests" / "v0"
+MANIFEST_DIR = ROOT / "manifests" / "v1"
 IMAGE_DIR = ROOT / "data" / "images"
 QUEUE_FILE = ROOT / "annotations" / "hand_check_queue_v0.csv"
 ANNOTATIONS = Path(os.environ.get("PAC_ANNOTATIONS_PATH", ROOT / "annotations" / "conflict_check.csv"))
@@ -35,7 +37,7 @@ HUMAN = "human"
 ATTRIBUTE_NAMES = {"neckline": "Neckline", "sleeve_length": "Sleeve length"}
 STATUS_NAMES = {"agrees": "names the label", "conflicts": "names another label", "silent": "names no label"}
 SPOT_CHECK_PER_VERDICT = 10
-QUEUE_VIEWS = ["Spot check: 20 of Claude's calls", "Not yet reviewed by you", "Claude can't tell",
+QUEUE_VIEWS = ["Not yet reviewed by you", "Spot check: 20 of Claude's calls", "Claude can't tell",
                "You and Claude disagree", "All 100"]
 STYLE = """
 <style>
@@ -157,6 +159,7 @@ if styles_dir is None or not (MANIFEST_DIR / "labels.csv").exists():
     st.stop()
 
 rows = load_rows(str(styles_dir))
+rows = rows[~rows["split"].isin(TEST_SPLITS)]  # test splits stay unseen
 annotations = load_annotations()
 keys = queue_keys(rows)
 order = {key: k for k, key in enumerate(keys, start=1)}
@@ -167,6 +170,10 @@ queue = queue.sort_values("k")
 
 def verdict_of(row, reviewer):
     return annotations.get((row.product_id, row.attribute), {}).get(reviewer, {}).get("verdict")
+
+
+def blind(row) -> bool:
+    return annotations.get((row.product_id, row.attribute), {}).get(HUMAN, {}).get("blind") == "1"
 
 
 with st.sidebar:
@@ -197,23 +204,26 @@ with st.sidebar:
         # Spot check: the first ten of each decisive Claude verdict, in the queue's seeded order.
         spot = {(r.product_id, r.attribute) for verdict in ("Description is wrong", "Catalog label is wrong")
                 for r in [q for q in queue.itertuples() if verdict_of(q, "claude") == verdict][:SPOT_CHECK_PER_VERDICT]}
-        spot_done = [r for r in queue.itertuples() if (r.product_id, r.attribute) in spot and verdict_of(r, HUMAN)]
-        spot_agree = sum(verdict_of(r, HUMAN) == verdict_of(r, "claude") for r in spot_done)
-        st.progress(len(spot_done) / max(len(spot), 1), text=f"Spot check: {len(spot_done)} of {len(spot)} reviewed")
         yours = [r for r in queue.itertuples() if verdict_of(r, HUMAN)]
         both = [r for r in yours if verdict_of(r, "claude")]
-        agree = sum(verdict_of(r, HUMAN) == verdict_of(r, "claude") for r in both)
-        st.caption(f"Spot check agreement: {spot_agree} of {len(spot_done)}. Across the queue you reviewed "
-                   f"{len(yours)} of {len(queue)} and agree with Claude on {agree} of {len(both)}.")
+        blind_both = [r for r in both if blind(r)]
+        shown_both = [r for r in both if not blind(r)]
+        st.progress(len(yours) / max(len(queue), 1), text=f"You reviewed {len(yours)} of {len(queue)}")
+        def agreeing(items):
+            return sum(verdict_of(r, HUMAN) == verdict_of(r, "claude") for r in items)
+
+        st.caption(f"Blind agreement with Claude: {agreeing(blind_both)} of {len(blind_both)}. Earlier verdicts, "
+                   f"saved with Claude's verdict shown and pre-selected: {agreeing(shown_both)} of {len(shown_both)}.")
         queue_view = st.radio("Show", QUEUE_VIEWS, key="queue_view")
         view_id = f"queue-{QUEUE_VIEWS.index(queue_view)}"
         view = queue
         if queue_view == QUEUE_VIEWS[0]:
-            view = view[[(r.product_id, r.attribute) in spot for r in view.itertuples()]]
-        elif queue_view == QUEUE_VIEWS[1]:
             view = view[[not verdict_of(r, HUMAN) for r in view.itertuples()]]
+        elif queue_view == QUEUE_VIEWS[1]:
+            view = view[[(r.product_id, r.attribute) in spot for r in view.itertuples()]]
         elif queue_view == QUEUE_VIEWS[2]:
-            view = view[[verdict_of(r, "claude") == "Can't tell" for r in view.itertuples()]]
+            view = view[[verdict_of(r, "claude") == "Can't tell" and bool(verdict_of(r, HUMAN))
+                         for r in view.itertuples()]]
         elif queue_view == QUEUE_VIEWS[3]:
             view = view[[bool(verdict_of(r, HUMAN)) and bool(verdict_of(r, "claude"))
                          and verdict_of(r, HUMAN) != verdict_of(r, "claude") for r in view.itertuples()]]
@@ -230,7 +240,8 @@ if view.empty:
 
 columns = ["product_id", "attribute", "category", "split", "label", "text_names", "decision"]
 if mode != "Browse":
-    view = view.assign(claude=[verdict_of(r, "claude") or "" for r in view.itertuples()],
+    view = view.assign(claude=[(verdict_of(r, "claude") or "") if verdict_of(r, HUMAN) else "hidden until you save"
+                               for r in view.itertuples()],
                        you=[verdict_of(r, HUMAN) or "" for r in view.itertuples()])
     columns = ["k"] + columns[:2] + ["label", "text_names", "claude", "you"]
 keys_in_view = [(int(p), a) for p, a in zip(view["product_id"], view["attribute"])]
@@ -279,22 +290,29 @@ with right:
         st.markdown(md(redact_description(product.description, attribute, product.brand)) or "(empty)")
 
     in_queue = (product.id, row["attribute"]) in order
-    if in_queue or row["text_status"] == "conflicts":
+    if (in_queue or row["text_status"] == "conflicts") and row["split"] in REVIEW_SPLITS:
         verdicts = annotations.get((product.id, row["attribute"]), {})
         claude, yours = verdicts.get("claude"), verdicts.get(HUMAN)
-        if claude:
+        if claude and yours:
             st.info(f"Claude's verdict: **{claude['verdict']}**. {claude.get('note', '')}")
-        start = (yours or claude or {}).get("verdict")
+        elif claude:
+            st.caption("Claude has a verdict on this item. It appears once you save yours.")
+        start = (yours or {}).get("verdict")
         with st.form(key=f"verdict-{product.id}-{row['attribute']}"):
             st.markdown("**Your verdict:** looking at the photo, which is right?")
             verdict = st.radio("Verdict", VERDICTS, key=f"verdict-choice-{product.id}-{row['attribute']}",
-                               index=VERDICTS.index(start) if start in VERDICTS else 0)
+                               index=VERDICTS.index(start) if start in VERDICTS else None)
             note = st.text_input("Note (optional)", value=(yours or {}).get("note", ""),
                                  key=f"note-{product.id}-{row['attribute']}")
             if st.form_submit_button("Save my verdict"):
+                if verdict is None:
+                    st.warning("Choose a verdict first.")
+                    st.stop()
                 save_annotation({"product_id": product.id, "attribute": row["attribute"], "catalog_label": row["label"],
                                  "text_names": row["text_names"], "verdict": verdict, "note": note, "reviewer": HUMAN,
-                                 "reviewed_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+                                 "reviewed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                 # Blind only on the first save: after it, Claude's verdict is on screen.
+                                 "blind": "" if yours else "1"})
                 saved = load_annotations()
                 later = keys_in_view[position + 1:] + keys_in_view[:position]
                 pending = [k for k in later if HUMAN not in saved.get(k, {})]
