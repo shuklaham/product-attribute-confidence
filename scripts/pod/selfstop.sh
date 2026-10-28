@@ -11,7 +11,12 @@ graphql() {
 }
 
 # Stops this pod, retrying for a few minutes. A stop ends GPU billing and keeps the volume disk (/workspace).
+# DRY_STOP=1 only reports, for testing the guard and watcher end to end.
 stop_pod() {
+  if [ -n "${DRY_STOP:-}" ]; then
+    echo "dry run: would stop pod $RUNPOD_POD_ID"
+    return 0
+  fi
   for _ in 1 2 3 4 5 6; do
     graphql "mutation { podStop(input: {podId: \\\"$RUNPOD_POD_ID\\\"}) { id desiredStatus } }" |
       grep -q '"desiredStatus"' && return 0
