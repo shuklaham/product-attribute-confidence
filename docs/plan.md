@@ -1,6 +1,12 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 3 (supervised result) complete; results in `reports/phase1.md`. SFT (M1) raises redacted accuracy to 98.4% on the seen test and 89.3% on the held-out test, but still states 0.95 on 90% of its answers. Temperature-scaled letter probabilities (M2-logit) are the strongest cheap fix, with a held-out Brier score of 0.078, which is the bar M4 has to beat. Thresholds fitted on seen categories overshoot the 5% error target on held-out items (10.5%). Milestone 4 (RL) is next. Last updated 2026-10-28.
+Status: Milestone 4 (RL result, one seed) complete; results in `reports/phase1.md` and `reports/phase2.md`.
+- **Primary comparison:** on the held-out test with redacted text, M4 does not count as better than M2-logit. Its Brier score is 0.072 against 0.078, but the 95% interval of the difference, −0.0136 to +0.0004, crosses zero by 0.0004.
+- **Calibration against ranking:** M4's written confidence is the best calibrated of any method under the shift (ECE 0.015 against 0.040), but it ranks answers worse than M2-logit (AUROC 0.79 against 0.86).
+- **Accuracy:** M4 is 2.0 points more accurate than M1.
+- **Training signal:** both runs used up their correctness signal (91% of groups had none, past the 80% stop line), so the RL recipe gets a rethink before the Milestone 5 seeds.
+
+Last updated 2026-10-28.
 
 ## 1. Question
 
@@ -199,7 +205,7 @@ All of these outcomes are reportable: RL wins under shift; the cheap fixes match
 - **Software on the pod:** `uv sync --group gpu` installs vLLM 0.32.0 with torch 2.13.0. Those torch wheels use CUDA 13, so the pod's host needs NVIDIA driver 580 or newer, and pods are created with that CUDA filter.
 - **Estimate:** 70–100 GPU-hours, about $55–75 including storage. Spending past $100 requires a review.
 - **Tracking:** spend is read from Runpod billing at each milestone and recorded in `docs/log.md`.
-- **Spent:** $21.74 through Milestone 3 (billing read 2026-10-28), of which about $19.50 was a pod left idle after its work finished.
+- **Spent:** $26.52 through Milestone 4 (billing read 2026-10-28): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished, and about $4.78 for Milestone 4.
 - **Local machine:** data preparation, tests and analysis.
 
 ## 9. Milestones

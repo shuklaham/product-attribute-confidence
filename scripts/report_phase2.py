@@ -21,7 +21,7 @@ Usage:
 import argparse
 import json
 import math
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import matplotlib
@@ -210,6 +210,24 @@ def mean(values) -> float:
     return sum(values) / len(values) if values else float("nan")
 
 
+def decompose(q: list, correct: list, group) -> dict:
+    """Murphy's decomposition of the Brier score over groups of forecasts; exact when each group holds one value.
+
+    Every output here is valid, so the Brier score with invalid outputs counted as 1 is the plain one.
+    """
+    if any(v is None for v in q):
+        raise ValueError("the decomposition needs a confidence for every answer")
+    groups = defaultdict(list)
+    for v, c in zip(q, correct):
+        groups[group(v)].append((v, c))
+    n, a = len(correct), sum(correct) / len(correct)
+    calibration = sum(len(g) / n * (np.mean([v for v, _ in g]) - np.mean([c for _, c in g])) ** 2
+                      for g in groups.values())
+    resolution = sum(len(g) / n * (np.mean([c for _, c in g]) - a) ** 2 for g in groups.values())
+    return {"calibration": float(calibration), "resolution": float(resolution), "uncertainty": a * (1 - a),
+            "groups": len(groups)}
+
+
 def rank_correlation(x, y) -> float:
     """Spearman's rank correlation, ties given their average rank; NaN if either side is constant."""
     def ranks(values):
@@ -362,6 +380,33 @@ def main() -> None:
         common = ", ".join(f"{v:g} ({n / total:.1%})" for v, n in stated.most_common(4))
         below = sum(n for v, n in stated.items() if v < 0.9) / total
         lines.append(f"| {name} | {len(stated)} | {common} | {pct(below)} |")
+
+    lines += ["", "## The Brier score, decomposed (exploratory)", "",
+              ("Held-out test, redacted text, clean items. Brier = calibration − resolution + uncertainty (Murphy). "
+               "Calibration is the gap between a group's confidence and its hit rate; resolution is how far the "
+               "groups' hit rates spread from the overall one; uncertainty is a(1 − a) for accuracy a, so it depends "
+               "only on the answers. Written confidences are grouped by value, which makes the decomposition exact; "
+               "letter probabilities, which are continuous, are grouped into 50 equal bins."), "",
+              "| Method | Brier | Calibration | Resolution | Uncertainty | Groups |", "|---|---:|---:|---:|---:|---:|"]
+    for name, (source, key) in METHODS.items():
+        records = [r for r in runs[source]["heldout_test"] if r["condition"] == "redacted" and r["clean"]]
+        q = methods.confidence(records, key, fitted)
+        c = [r["correct"] for r in records]
+        part = decompose(q, c, (lambda v: min(int(v * 50), 49)) if key == "letter" else (lambda v: v))
+        lines.append(f"| {name} | {metrics.brier(q, c, invalid_loss=1.0):.4f} | {part['calibration']:.4f} | "
+                     f"{part['resolution']:.4f} | {part['uncertainty']:.4f} | {part['groups']} |")
+
+    lines += ["", "## How often each written value is right, held-out test, redacted text, clean items", "",
+              "Values written fewer than 20 times are left out.", "",
+              "| Model | Written confidence | Answers | Right |", "|---|---:|---:|---:|"]
+    for name, source in (("M1", "m1"), ("M3", "m3"), ("M4", "m4")):
+        by_value = defaultdict(list)
+        for r in runs[source]["heldout_test"]:
+            if r["condition"] == "redacted" and r["clean"] and r["error"] is None:
+                by_value[r["confidence"]].append(r["correct"])
+        for value, outcomes in sorted(by_value.items()):
+            if len(outcomes) >= 20:
+                lines.append(f"| {name} | {value:g} | {len(outcomes):,} | {pct(sum(outcomes) / len(outcomes))} |")
 
     lines += ["", "## Does the written confidence follow the model's own letter probability? (exploratory)", "",
               ("Rank correlation, on the held-out test (redacted text, clean items, valid outputs), between the "

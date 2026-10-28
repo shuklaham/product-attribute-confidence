@@ -291,3 +291,60 @@ Milestone 2 is complete.
   - The laptop watcher saw the end, copied the outputs, checked them against checksums made on the pod, and marked them copied, within 70 seconds.
   - The guard then stopped at once instead of waiting out its full copy window.
 - Pushes send only git-tracked files and the git history, so `.env` and `private/` cannot reach a pod; both were confirmed absent on it.
+
+**Ran**
+- Sampling pass (`scripts/sample_pool.py`, 14 minutes): M1 answered the 7,717 RL prompts 8 times each at temperature 1.
+  - 614 prompts were mixed (8.0%; dev had predicted 5.5%) and 7,103 settled (7,053 all right, 50 all wrong).
+  - Mixed prompts by group: neckline redacted 290, neckline full 129, sleeve redacted 131, sleeve full 64.
+  - 96.9% of the samples were right, and 15 of 61,736 were invalid. The step rule gave 461 steps.
+- Pre-flight check on 8 prompts:
+  - Sampling used the plain distribution.
+  - The training forward reproduced the sampler's token log-probabilities to a mean gap of 0.003 nats (max 0.12, bf16 rounding).
+  - Sampling then moved to one left-padded batch per step, about 30% faster, and passed the same check.
+- Smoke run: 4 M4 steps, 39 s per step, 27 GB peak memory.
+- `scripts/pod/phase2.sh` at commit `1c3ec71`, 06:05–13:15 UTC. M4: 461 steps in 285 minutes, then its five evaluations. M3: 461 steps in 113 minutes, then its five. Every step exited 0.
+
+**A pipeline bug, caught by an independent review of the running code**
+- In `phase2.sh`, `run()` set `name` without `local`, which overwrote the loop's own `name`. Every evaluation after training would have looked for its adapter under the previous step's name (`artifacts/train_m4/adapter`, then `artifacts/train_m4_dev/adapter`, and so on). The first evaluation would have failed and ended the run: M4 never evaluated, M3 never trained.
+- The running loop could not be edited, since bash had already parsed it. While M4 was still training, links were put at the 10 paths the loop would ask for, pointing to the real adapters. After the copy, each oddly named output folder was renamed only after its run record's split and adapter hash were checked.
+- Fixed in `4bc84f1`. A plan-only mode runs the real loop with echoed commands, and `tests/test_pod_scripts.py` checks every path; it fails when the bug is put back.
+- The review found nothing wrong in the training code: loss, masking, batching, rewards and arm parity.
+
+**The pod stopped itself, and was then deleted**
+- The watcher copied the outputs and checked them against checksums made on the pod at 13:17 UTC, and the pod was `EXITED` at the next read.
+- Restarting it to fetch the console logs failed twice, because another renter had taken the GPU on its host. So it was deleted, and the console output in `/workspace/logs` was lost.
+- Every prediction, run record and per-step training log had already been copied and verified. The watcher's timeline is in `artifacts/logs/phase2_pod/watch.log`.
+
+**Cost:** Runpod billing, read after the delete: $26.52 for the project ($26.14 GPU, $0.39 disk), so Milestone 4 cost about $4.78 (one A40 pod, 05:24–13:17 UTC).
+
+**Findings** (held-out test, redacted text, clean items, both attributes pooled, one training seed; intervals are 95% from the paired family bootstrap, 10,000 draws)
+- **Primary comparison: M4 does not count as better than M2-logit.**
+  - Brier score 0.072 against 0.078: difference −0.0061, interval −0.0136 to +0.0004. The interval crosses zero by 0.0004, so the criterion fails.
+  - Accuracy +2.0 points (+1.1 to +2.8), within the allowed margin.
+- **M4 is the best-calibrated method under the shift, but worse at ranking.**
+  - ECE 0.015, against 0.040 for M2-logit and 0.051 for M1.
+  - When M4 writes 0.85 it is right 83.7% of the time; 0.92, 92.1%; 0.98, 98.7%.
+  - AUROC 0.789 against 0.862 (−0.073, −0.096 to −0.048). Within each attribute: 0.726 and 0.750, against 0.781 and 0.838.
+- **Part of M4's Brier gain is accuracy.** RL raised held-out accuracy: M1 89.3%, M3 90.1%, M4 91.3%. M4 minus M3 is +1.2 points (+0.5 to +1.9); M3 minus M1 is +0.75 (+0.15 to +1.4).
+- **The calibration reward matters.**
+  - Against M3, M4 is better on Brier (−0.011, −0.016 to −0.007) and AUROC (+0.088, +0.062 to +0.115).
+  - M3's written confidence is overconfident: its 0.8 answers are right 63% of the time.
+- **The written number now follows the model's own letter probability.** Rank correlation 0.87 for M4, 0.62 for M3 and 0.51 for M1 (exploratory).
+- **It now reacts to missing evidence, partly.** Redacting the text lowers M4's confidence by 4.0 points while its accuracy falls 5.8. For M1 the numbers were 0.5 and 7.2.
+- **M4 writes few values.** 7 distinct; 0.98 on 75% of answers, 0.95 on 11%, below 0.9 on 12%. A number with so few levels cannot order answers as finely as a probability, which likely explains its lower AUROC.
+- **Thresholds still do not transfer.** M4's frozen thresholds auto-fill 99.8% of held-out answers at 8.6% error (M2-logit: 10.5%), still above the 5% target.
+- **On the seen test the methods tie on Brier:** M4 minus M2-logit is −0.0007 (−0.0036 to +0.0021).
+- **Training used up its own signal.**
+  - The share of groups whose 8 answers were all right or all wrong rose from 73% in steps 0–24 to 90% in steps 100–199 and 97% after step 300. Over the run it was 91%, past the plan's 80% stop line.
+  - M3 trained on 0.7 groups per step on average, so it is a weak control for "RL itself".
+  - M4 trained on 7.9 groups per step, because its stated confidences still varied when its answers agreed.
+
+**Milestone 4 exit criteria:**
+- the results table for M0–M4 and M2-logit is in `reports/phase2.md`;
+- the zero-signal share is logged for each arm (`artifacts/m3/log.jsonl`, `artifacts/m4/log.jsonl`).
+
+Milestone 4 is complete.
+
+**Next** (author's decisions for Milestone 5):
+- **The stop line was crossed**, so the RL recipe needs a rethink before more seeds. Options: re-sort the pool between passes, keep only groups with signal as they are sampled, or start RL from a model that is less sure on the training categories. Whichever is chosen, it is fixed before the next run.
+- **Three seeds for M3 and M4.** With one seed, the primary interval crosses zero by 0.0004, and the seed spread is unknown.

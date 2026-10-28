@@ -2,6 +2,10 @@
 
 Does RL with a calibration reward make a vision-language model's stated confidence more trustworthy on product categories it never trained on, compared with cheap post-hoc calibration? The full design, decisions and milestones are in [docs/plan.md](docs/plan.md). How each part works, and why it is built that way, is in [docs/concepts.md](docs/concepts.md). The dated run log is [docs/log.md](docs/log.md).
 
+**Results so far** (one RL training seed):
+- **[reports/phase1.md](reports/phase1.md), SFT and the cheap fixes.** SFT lifts held-out accuracy, but the written confidence stays at 0.95. The model's own letter probabilities, temperature-scaled (M2-logit), are the strongest cheap fix.
+- **[reports/phase2.md](reports/phase2.md), RL.** RL with a calibration reward (M4) makes the written confidence the best calibrated of any method on held-out categories, and adds 2 points of accuracy. It still separates right from wrong answers less sharply than M2-logit, so by the rule fixed before training it does not count as better (Brier difference −0.006, 95% interval −0.014 to +0.0004).
+
 ## Setup
 
 ```
