@@ -8,21 +8,34 @@
 # - when this script ends, for any reason, after up to 30 minutes for the laptop to copy the outputs;
 # - when no file under /workspace/logs or /workspace/artifacts has changed for 40 minutes;
 # - 12 hours after the start, whatever happens.
+#
+# PLAN_ONLY=<dir> runs the same loop anywhere, writing each command to its log under <dir>/logs
+# instead of running it, so a test can check every path (tests/test_pod_scripts.py).
 set -uo pipefail
-cd /root/pac || exit 1
-. scripts/pod/selfstop.sh
-export UV_PROJECT_ENVIRONMENT=/root/venv HF_HOME=/root/hf HF_HUB_OFFLINE=1 PATH=/root/.local/bin:$PATH
-W=/workspace
-mkdir -p $W/logs
-log() { echo "$(date -u +%H:%M:%S) $*" >> $W/logs/phase2.log; }
-pod_api_check || { log "the pod cannot reach the Runpod API, so it could not stop itself; not starting"; exit 1; }
-rm -f $W/EXIT_STATUS $W/COPIED
-trap 'end_run "exit $?"' EXIT
-setsid nohup bash scripts/pod/guard.sh 2400 43200 $W/logs $W/artifacts > $W/logs/guard.log 2>&1 < /dev/null &
-log "started at commit $(git rev-parse --short HEAD); guard pid $!"
+if [ -n "${PLAN_ONLY:-}" ]; then
+  W=$PLAN_ONLY
+  py="echo python"
+  mkdir -p $W/logs
+  log() { echo "$*" >> $W/logs/phase2.log; }
+else
+  cd /root/pac || exit 1
+  . scripts/pod/selfstop.sh
+  export UV_PROJECT_ENVIRONMENT=/root/venv HF_HOME=/root/hf HF_HUB_OFFLINE=1 PATH=/root/.local/bin:$PATH
+  W=/workspace
+  py="uv run --group gpu python -I"
+  mkdir -p $W/logs
+  log() { echo "$(date -u +%H:%M:%S) $*" >> $W/logs/phase2.log; }
+  pod_api_check || { log "the pod cannot reach the Runpod API, so it could not stop itself; not starting"; exit 1; }
+  rm -f $W/EXIT_STATUS $W/COPIED
+  trap 'end_run "exit $?"' EXIT
+  setsid nohup bash scripts/pod/guard.sh 2400 43200 $W/logs $W/artifacts > $W/logs/guard.log 2>&1 < /dev/null &
+  log "started at commit $(git rev-parse --short HEAD); guard pid $!"
+fi
 
 run() {  # name, command...
-  name=$1
+  # local: the caller's loop has its own `name`. Without it, the 2026-10-28 run looked for each
+  # evaluation's adapter under the previous step's name (docs/log.md).
+  local name=$1 code
   shift
   "$@" > "$W/logs/$name.log" 2>&1
   code=$?
@@ -30,14 +43,18 @@ run() {  # name, command...
   return $code
 }
 
+failed=0
 for arm in "m4 calibration" "m3 correctness"; do
   set -- $arm
   name=$1 kind=$2
-  run "train_$name" uv run --group gpu python -I scripts/train_grpo.py data/processed/v1/train.jsonl data/images \
+  run "train_$name" $py scripts/train_grpo.py data/processed/v1/train.jsonl data/images \
     artifacts/grpo_pool artifacts/m1_lr2e-4/adapter "artifacts/$name" --reward "$kind" || exit 1
-  for split in dev cal_fit cal_threshold test heldout_test; do
-    run "${name}_$split" uv run --group gpu python -I scripts/predict.py "data/processed/v1/$split.jsonl" data/images \
-      "artifacts/${name}_$split" --lora "artifacts/$name/adapter" || exit 1
+  # The primary split first. An evaluation can be rerun from the saved adapter, so a failed one does
+  # not stop the other arm; the script still ends with a failure code.
+  for split in heldout_test test cal_threshold cal_fit dev; do
+    run "${name}_$split" $py scripts/predict.py "data/processed/v1/$split.jsonl" data/images \
+      "artifacts/${name}_$split" --lora "artifacts/$name/adapter" || failed=1
   done
 done
 log ALL_DONE
+exit $failed

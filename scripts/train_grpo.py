@@ -264,6 +264,7 @@ def main() -> None:
             loss.backward()
             trained += 1
         grad_norm = float(torch.nn.utils.clip_grad_norm_(policy.params, CLIP)) if trained else 0.0
+        lr = optimizer.param_groups[0]["lr"]  # the rate this step used; the warm-up moves it after the step
         if trained:
             optimizer.step()
         warmup.step()
@@ -276,7 +277,7 @@ def main() -> None:
         right, wrong = [q for q, c in stated if c], [q for q, c in stated if not c]
         record = {
             "step": step,
-            "lr": optimizer.param_groups[0]["lr"],
+            "lr": lr,
             "reward": sum(rewards) / len(rewards),
             "accuracy": sum(correct) / len(correct),
             "invalid": sum(not p.valid for p in parsed) / len(parsed),
