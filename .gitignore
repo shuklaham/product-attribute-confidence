@@ -1,7 +1,7 @@
 .env
 private/
 data/
-artifacts/
+artifacts
 .venv/
 __pycache__/
 *.pyc
