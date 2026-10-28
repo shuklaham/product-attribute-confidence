@@ -10,11 +10,14 @@
 # - when no file under /workspace/logs or /workspace/artifacts has changed for 40 minutes;
 # - 15 hours after the start, whatever happens.
 #
-# Usage: SEED=<n> [EXTRA=1] bash scripts/pod/phase3.sh
+# Usage: SEED=<n> [RESCORE=50] [EXTRA=1] bash scripts/pod/phase3.sh
+# RESCORE is the steps between re-scorings: 50, or 100 if the pre-flight check measured a full
+# scoring pass above 6 minutes (docs/plan.md, decision log 2026-10-28).
 # PLAN_ONLY=<dir> runs the same steps anywhere, writing each command to its log under <dir>/logs
 # instead of running it (tests/test_pod_scripts.py).
 set -uo pipefail
 seed=${SEED:?set SEED}
+rescore=${RESCORE:-50}
 if [ -n "${PLAN_ONLY:-}" ]; then
   W=$PLAN_ONLY
   py="echo python"
@@ -67,7 +70,7 @@ for arm in "m4 calibration" "m3 correctness"; do
   set -- $arm
   name="${1}_v2_s$seed" kind=$2
   run "train_$name" $py scripts/train_grpo.py data/processed/v1/train.jsonl data/images \
-    artifacts/m1_lr2e-4/adapter "artifacts/$name" --reward "$kind" --seed "$seed" || exit 1
+    artifacts/m1_lr2e-4/adapter "artifacts/$name" --reward "$kind" --seed "$seed" --rescore-every "$rescore" || exit 1
   evaluate "$name" "artifacts/$name/adapter"
   swap "$name" "artifacts/$name/adapter"
 done
