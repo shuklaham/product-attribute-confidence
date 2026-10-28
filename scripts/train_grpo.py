@@ -5,8 +5,8 @@
     Invalid output gets −1.1 in both (src/pac/rewards.py).
 
 Each step takes 8 prompts from the schedule in src/pac/grpo.py (4 mixed and 4 settled, in the
-same order for both arms), samples 8 answers to each from the current policy at temperature 1,
-scores them, and takes one optimizer step on
+same order for both arms), samples 8 answers to each from the current policy at temperature 1, in
+one left-padded batch, scores them, and takes one optimizer step on
 
     loss = −(1/64) Σ_samples advantage × Σ_completion tokens log π(token)
 
@@ -15,9 +15,12 @@ sampled, so no importance ratio or clipping is needed. There is no KL term, so a
 advantages are all zero contributes nothing and is skipped. The LoRA adapter starts as M1's, with
 its rank and modules, and dropout is off so that the update scores exactly the policy that sampled.
 
+The update scores each group on its own, without padding, so the check below also tests that the
+padded batch sampled from the same distribution.
+
 --check N samples N prompts without training. It prints the decoded answers with their rewards in
 both arms, checks that sampling used the plain distribution, compares the training forward's
-log-probabilities with the sampler's, and times one forward and backward pass.
+log-probabilities with the sampler's, and times one sampling batch and one forward and backward pass.
 
 Usage:
     uv run --group gpu python -I scripts/train_grpo.py <train.jsonl> <image_dir> <pool_dir> <init_adapter> <out_dir>
@@ -74,6 +77,7 @@ class Policy:
 
         self.processor = AutoProcessor.from_pretrained(MODEL, revision=REVISION)
         self.tokenizer = self.processor.tokenizer
+        self.tokenizer.padding_side = "left"  # batched sampling continues every prompt from its last token
         base = AutoModelForImageTextToText.from_pretrained(MODEL, revision=REVISION, dtype=torch.bfloat16,
                                                            attn_implementation="sdpa").to("cuda")
         self.model = PeftModel.from_pretrained(base, str(adapter), is_trainable=True)
@@ -95,13 +99,20 @@ class Policy:
         self.keep_logits = "logits_to_keep" in inspect.signature(base.forward).parameters
         self.params = [p for p in self.model.parameters() if p.requires_grad]
 
-    def encode(self, example: dict, image_dir: Path) -> dict:
-        """GROUP identical copies of one prompt, so sampling and scoring need no padding."""
-        text = self.processor.apply_chat_template(messages(example, image=example["image"]), tokenize=False,
-                                                  add_generation_prompt=True)
-        with Image.open(image_dir / example["image"]) as image:
-            image = image.convert("RGB")
-        batch = self.processor(text=[text] * GROUP, images=[image] * GROUP, return_tensors="pt")
+    def encode(self, examples: list[dict], image_dir: Path) -> dict:
+        """GROUP copies of each prompt, in order, left-padded to a common length.
+
+        For one prompt the copies are identical, so there is no padding: that is how groups are scored.
+        """
+        texts, images = [], []
+        for example in examples:
+            text = self.processor.apply_chat_template(messages(example, image=example["image"]), tokenize=False,
+                                                      add_generation_prompt=True)
+            with Image.open(image_dir / example["image"]) as image:
+                image = image.convert("RGB")
+            texts += [text] * GROUP
+            images += [image] * GROUP
+        batch = self.processor(text=texts, images=images, padding=True, return_tensors="pt")
         return {k: v.to("cuda") for k, v in batch.items()}
 
     @torch.no_grad()
@@ -141,42 +152,44 @@ def score(texts: list[str], example: dict, kind: str) -> tuple[list, list[float]
 
 
 def check(policy: Policy, examples: list[dict], image_dir: Path, out_dir: Path) -> None:
-    """Sample without training: decoded answers, the sampler's settings, and log-probability agreement."""
+    """Sample without training: decoded answers, the sampler's settings, and log-probability agreement.
+
+    All prompts are sampled in one left-padded batch, as in training, and each group is then scored on
+    its own without padding, so a gap would also show a padding or position error.
+    """
+    torch.cuda.reset_peak_memory_stats()
+    clock = time.monotonic()
+    completions, lengths, texts, out = policy.sample(policy.encode(examples, image_dir), keep=True)
+    t_sample = time.monotonic() - clock
+    # With temperature 1 and no top-k or top-p cut, the processed scores are the raw logits.
+    plain = all(torch.equal(s, raw) for s, raw in zip(out.scores, out.logits))
+    sampled = torch.log_softmax(torch.stack(out.logits, 1).float(), -1)
+    sampled = sampled.gather(-1, completions[..., None]).squeeze(-1)
+    del out
     gaps, report = [], []
-    for example in examples:
-        inputs = policy.encode(example, image_dir)
-        completions, lengths, texts, out = policy.sample(inputs, keep=True)
-        # With temperature 1 and no top-k or top-p cut, the processed scores are the raw logits.
-        plain = all(torch.equal(s, raw) for s, raw in zip(out.scores, out.logits))
-        sampled = torch.log_softmax(torch.stack(out.logits, 1).float(), -1)
-        width = int(lengths.max())
-        sampled = sampled[:, :width].gather(-1, completions[:, :width, None]).squeeze(-1)
+    for i, example in enumerate(examples):
+        rows = slice(i * GROUP, (i + 1) * GROUP)
         with torch.no_grad():
-            scored, mask = policy.logprobs(inputs, completions, lengths)
-        gap = (sampled - scored).abs()[mask]
+            scored, mask = policy.logprobs(policy.encode([example], image_dir), completions[rows], lengths[rows])
+        gap = (sampled[rows, :mask.shape[1]] - scored).abs()[mask]
         gaps.append(gap)
-        parsed, m3 = score(texts, example, "correctness")
-        _, m4 = score(texts, example, "calibration")
-        report.append({"example_id": example["example_id"], "answer": example["answer"], "plain_sampling": plain,
-                       "max_logprob_gap": float(gap.max()), "outputs": texts,
+        parsed, m3 = score(texts[rows], example, "correctness")
+        _, m4 = score(texts[rows], example, "calibration")
+        report.append({"example_id": example["example_id"], "answer": example["answer"],
+                       "max_logprob_gap": float(gap.max()), "outputs": texts[rows],
                        "parsed": [[p.choice, p.confidence, p.error] for p in parsed], "reward_m3": m3,
                        "reward_m4": [round(r, 4) for r in m4]})
         print(json.dumps(report[-1]), flush=True)
-    torch.cuda.reset_peak_memory_stats()
     clock = time.monotonic()
-    inputs = policy.encode(examples[0], image_dir)
-    completions, lengths, _, _ = policy.sample(inputs)
-    t_sample = time.monotonic() - clock
-    clock = time.monotonic()
-    scored, mask = policy.logprobs(inputs, completions, lengths)
+    scored, mask = policy.logprobs(policy.encode(examples[:1], image_dir), completions[:GROUP], lengths[:GROUP])
     (scored * mask).sum().backward()
     torch.cuda.synchronize()
     policy.model.zero_grad(set_to_none=True)
     gaps = torch.cat(gaps)
     t_update = time.monotonic() - clock
-    summary = {"prompts": len(examples), "plain_sampling": all(r["plain_sampling"] for r in report),
+    summary = {"prompts": len(examples), "plain_sampling": plain,
                "logprob_gap_max": float(gaps.max()), "logprob_gap_mean": float(gaps.mean()),
-               "seconds_sample_group": round(t_sample, 2), "seconds_forward_backward_group": round(t_update, 2),
+               "seconds_sample_batch": round(t_sample, 2), "seconds_forward_backward_group": round(t_update, 2),
                "peak_memory_gb": round(torch.cuda.max_memory_allocated() / 2**30, 1),
                "logits_to_keep": policy.keep_logits, "adapted_modules": policy.adapted,
                "trainable_parameters": sum(p.numel() for p in policy.params)}
@@ -229,22 +242,23 @@ def main() -> None:
     for step, keys in enumerate(run_steps):
         torch.manual_seed(SEED * 1_000_003 + step)  # both arms draw the same random numbers at each step
         t0 = time.monotonic()
+        examples = [by_key[key] for key in keys]
+        completions, lengths, texts, _ = policy.sample(policy.encode(examples, args.image_dir))
         groups = []
-        for key in keys:
-            example = by_key[key]
-            inputs = policy.encode(example, args.image_dir)
-            completions, lengths, texts, _ = policy.sample(inputs)
-            parsed, rewards = score(texts, example, args.reward)
-            groups.append({"inputs": inputs, "completions": completions, "lengths": lengths, "parsed": parsed,
-                           "correct": [int(p.valid and p.choice == example["answer"]) for p in parsed],
-                           "rewards": rewards, "advantages": advantages(rewards)})
+        for i, example in enumerate(examples):
+            rows = slice(i * GROUP, (i + 1) * GROUP)
+            parsed, rewards = score(texts[rows], example, args.reward)
+            correct = [int(p.valid and p.choice == example["answer"]) for p in parsed]
+            groups.append({"example": example, "completions": completions[rows], "lengths": lengths[rows],
+                           "parsed": parsed, "correct": correct, "rewards": rewards, "advantages": advantages(rewards)})
         t1 = time.monotonic()
         optimizer.zero_grad(set_to_none=True)
         trained = 0
         for g in groups:
             if max(abs(a) for a in g["advantages"]) < 1e-12:
                 continue
-            scored, mask = policy.logprobs(g["inputs"], g["completions"], g["lengths"])
+            scored, mask = policy.logprobs(policy.encode([g["example"]], args.image_dir), g["completions"],
+                                           g["lengths"])
             weights = torch.tensor(g["advantages"], device="cuda", dtype=torch.float32)[:, None]
             loss = -(weights * scored * mask).sum() / (GROUP * len(groups))
             loss.backward()
