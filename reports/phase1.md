@@ -67,6 +67,17 @@ Pooled over both attributes; each attribute and text condition uses its own maps
 | Held-out test | full | M2 | 2,853 | 91.5% | 0.0% | 0.079 | 0.065 | 0.661 | 0.052 | 99.8% | 8.4% |
 | Held-out test | full | M2-logit | 2,853 | 91.5% | 0.0% | 0.069 | 0.044 | 0.789 | 0.030 | 99.5% | 8.3% |
 
+## AUROC within each attribute, redacted text, clean items
+
+The pooled AUROC above also compares answers across the two attributes, so it partly rewards knowing which attribute is easier. Within one attribute it measures only which answers of the same kind are riskier, and M2 equals M1 there, because each of its maps is increasing (a > 0 above).
+
+| Split | Attribute | n | M0 | M1 | M2 | M2-logit |
+|---|---|---:|---:|---:|---:|---:|
+| Seen test | neckline | 667 | 0.500 | 0.710 | 0.710 | 0.939 |
+| Seen test | sleeve_length | 1,020 | 0.501 | 0.526 | 0.526 | 0.949 |
+| Held-out test | neckline | 1,232 | 0.503 | 0.593 | 0.593 | 0.781 |
+| Held-out test | sleeve_length | 1,424 | 0.501 | 0.551 | 0.551 | 0.838 |
+
 ## Accuracy by category, redacted text, clean items
 
 | Split | Category | n | M0 | M1 |
@@ -130,7 +141,7 @@ Reliability: M1's stated values (0.9, 0.95, 0.98) all fall in one bin, so its di
 
 ![Risk–coverage](figures/phase1_risk_coverage.png)
 
-Risk–coverage: lines rank both attributes together, with ties in a random order, so a method that states one value for every item draws a flat line at its overall error rate. Dots are the outcome of each method's frozen thresholds, which are set per attribute, so a dot can sit off its line. M2 is left out: its map is increasing, so it ranks items exactly as M1 does and its curve is M1's.
+Risk–coverage: lines rank both attributes together, with ties in a random order, so a method that states one value for every item draws a flat line at its overall error rate. Dots are the outcome of each method's frozen thresholds, which are set per attribute, so a dot can sit off its line. M2 is left out to keep the figure readable: within each attribute it ranks answers exactly as M1 does, and its pooled risk–coverage area is in the results table.
 
 ## Differences with 95% intervals, redacted text, clean items
 

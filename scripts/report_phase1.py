@@ -289,6 +289,23 @@ def main() -> None:
                                  f"{pct(s['invalid'])} | {num(s['brier'])} | {num(s['ece'])} | {num(s['auroc'])} | "
                                  f"{num(s['aurc'])} | {pct(s['coverage'])} | {pct(s['risk'])} |")
 
+    increasing = all(p.a > 0 for p in fitted.platt.values())
+    lines += ["", "## AUROC within each attribute, redacted text, clean items", "",
+              ("The pooled AUROC above also compares answers across the two attributes, so it partly rewards knowing "
+               "which attribute is easier. Within one attribute it measures only which answers of the same kind are "
+               "riskier" + (", and M2 equals M1 there, because each of its maps is increasing (a > 0 above)."
+                            if increasing else ".")), "",
+              "| Split | Attribute | n | M0 | M1 | M2 | M2-logit |", "|---|---|---:|---:|---:|---:|---:|"]
+    for split in SPLITS:
+        for attribute in ("neckline", "sleeve_length"):
+            cells = []
+            for name, (source, key) in METHODS.items():
+                records = [r for r in runs[source][split]
+                           if r["condition"] == "redacted" and r["clean"] and r["attribute"] == attribute]
+                cells.append(num(metrics.auroc(methods.confidence(records, key, fitted),
+                                               [r["correct"] for r in records])))
+            lines.append(f"| {SPLITS[split]} | {attribute} | {len(records):,} | " + " | ".join(cells) + " |")
+
     lines += ["", "## Accuracy by category, redacted text, clean items", "", "| Split | Category | n | M0 | M1 |",
               "|---|---|---:|---:|---:|"]
     for split in SPLITS:
@@ -360,7 +377,8 @@ def main() -> None:
               ("Risk–coverage: lines rank both attributes together, with ties in a random order, so a method that "
               "states one value for every item draws a flat line at its overall error rate. Dots are the outcome of "
               "each method's frozen thresholds, which are set per attribute, so a dot can sit off its line. M2 is left "
-              "out: its map is increasing, so it ranks items exactly as M1 does and its curve is M1's.")]
+              "out to keep the figure readable: within each attribute it ranks answers exactly as M1 does, and its "
+              "pooled risk–coverage area is in the results table.")]
 
     lines += ["", "## Differences with 95% intervals, redacted text, clean items", "",
               (f"Paired bootstrap over product families ({args.resamples:,} draws); every draw also refits M2's "

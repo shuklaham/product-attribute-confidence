@@ -257,7 +257,8 @@ Milestone 2 is complete.
 - **M1's stated confidence still says almost nothing.** It states 0.95 on 89.6% of answers, 0.9 on 5.4% and 0.98 on 5.0%. Its AUROC is 0.66 on the seen test and 0.63 on the held-out test, against 0.50 for M0. On held-out items, redacting the text lowers accuracy by 7.2 points and stated confidence by 0.5 points.
 - **M2-logit is the strongest method on every metric where the methods can differ.**
   - Held-out Brier score 0.078, against 0.096 for M1 (difference −0.017, −0.025 to −0.008) and 0.099 for M2 (−0.020, −0.053 to −0.009).
-  - AUROC 0.86 against 0.63 for M1; ECE 0.040 against 0.051.
+  - AUROC 0.86 against 0.63 for M1, pooled over both attributes. Within each attribute, which leaves out the easier-attribute effect: 0.78 (neckline) and 0.84 (sleeve length), against 0.59 and 0.55.
+  - ECE 0.040 against 0.051.
   - On held-out items, its confidence falls 9.8 points when the text is redacted, while accuracy falls 7.2.
   - Its strength comes from SFT, not from the temperature. The base model's letter probabilities need temperatures of 4.4–6.4; M1's need 1.01–1.17, and on the held-out test M1's raw letter probabilities have the same Brier score, 0.078, as the temperature-scaled ones.
 - **The Platt map on stated confidence does not survive the shift.** On the seen test it lowers ECE from 0.034 to 0.013. On the held-out test it raises ECE from 0.051 to 0.080 and does not improve the Brier score (+0.003, −0.005 to +0.036). On seen categories a stated 0.95 is right 97–99% of the time, and the map carries that over to categories where it is not.
