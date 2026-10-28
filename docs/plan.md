@@ -1,6 +1,6 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 2 (end-to-end baseline) complete. The base model scores 95.5% (neckline) and 93.6% (sleeve length) on redacted dev, above the 90% stop line, and the author chose to continue. Its stated confidence carries no information (0.95 on nearly every answer) while its letter probabilities do, so the primary comparison is now RL (M4) against temperature-scaled letter probabilities (M2-logit). Milestone 3 (SFT) is next. Last updated 2026-10-26.
+Status: Milestone 3 (supervised result) complete; results in `reports/phase1.md`. SFT (M1) raises redacted accuracy to 98.4% on the seen test and 89.3% on the held-out test, but still states 0.95 on 90% of its answers. Temperature-scaled letter probabilities (M2-logit) are the strongest cheap fix, with a held-out Brier score of 0.078, which is the bar M4 has to beat. Thresholds fitted on seen categories overshoot the 5% error target on held-out items (10.5%). Milestone 4 (RL) is next. Last updated 2026-10-28.
 
 ## 1. Question
 
@@ -60,6 +60,7 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-26 | GRPO trains only on training items where the model's sampled answers are neither all right nor all wrong; M3 and M4 use the same pool | A group whose 8 answers are all right, or all wrong, gives every sample the same correctness reward and no learning signal. With T-shirts near 99%, an unfiltered pool would be mostly such groups |
 | 2026-10-26 | The primary comparison becomes M4 against M2-logit; M4 against M2 becomes secondary; M1 stays plain SFT (author's decision, before any training) | The base model states 0.95 on nearly every answer, and SFT with the confidence value left out of the loss will most likely keep that habit, so a Platt map on M1's stated confidence would turn a constant into another constant. Temperature-scaled letter probabilities are the strongest cheap fix: on the base model they rank answers with AUROC 0.92–0.98. The question becomes whether RL can make the stated confidence as informative as what the model already holds internally, under shift |
 | 2026-10-26 | Keep word list v1. "Vest" and a lone "three quarter", which the model-based check flagged, are not added | In train and dev, "vest" appears in 22 redacted sleeve items and only 9 are sleeveless; a lone "three quarter" mostly describes trousers (1 of 5 is three-quarter sleeves). They are correlates, not statements |
+| 2026-10-28 | GPU pods stop themselves. The run script stops its pod when it finishes and after a time limit; outputs are written to the pod's volume disk, which a stop keeps; the laptop checks progress with short SSH calls that retry, then copies the outputs back and deletes the pod | The Milestone 3 pod finished its work in 4 hours and then billed 33 more hours idle (about $19.50 of the $21.74 spent so far). The only watcher was one SSH connection, which dropped with the laptop's network. A stopped pod bills only its volume disk |
 
 ## 3. Data
 
@@ -180,11 +181,12 @@ All of these outcomes are reportable: RL wins under shift; the cheap fixes match
 
 ## 8. Compute and budget
 
-- **GPU:** Runpod Secure Cloud A40 48 GB, $0.59/hr (catalog read 2026-10-18), in CA-MTL-1.
-- **Storage:** a 30 GB high-performance network volume in the same data center, $0.14/GB-month.
+- **GPU:** Runpod Secure Cloud A40 48 GB, $0.59/hr (catalog read 2026-10-18), in whichever data center has stock.
+- **Storage:** no network volume (decision log, 2026-10-26). Each pod writes its outputs to its own volume disk; they are copied back, checked against checksums, and the pod is deleted.
 - **Software on the pod:** `uv sync --group gpu` installs vLLM 0.32.0 with torch 2.13.0. Those torch wheels use CUDA 13, so the pod's host needs NVIDIA driver 580 or newer, and pods are created with that CUDA filter.
 - **Estimate:** 70–100 GPU-hours, about $55–75 including storage. Spending past $100 requires a review.
 - **Tracking:** spend is read from Runpod billing at each milestone and recorded in `docs/log.md`.
+- **Spent:** $21.74 through Milestone 3 (billing read 2026-10-28), of which about $19.50 was a pod left idle after its work finished.
 - **Local machine:** data preparation, tests and analysis.
 
 ## 9. Milestones

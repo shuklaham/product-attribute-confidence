@@ -197,3 +197,25 @@ M1 is the base model plus a small trained add-on, a LoRA adapter.
 - **A version detail:** transformers 5.19 needs `mm_token_type_ids`, which marks which tokens are image tokens, to build Qwen3-VL's position encoding. The training batches carry the processor's markers through.
 
 Code: `src/pac/sft.py`, `scripts/train_sft.py`, `scripts/predict.py`. Tests: `tests/test_sft.py`.
+
+## 13. What the supervised phase showed
+
+The numbers are in `reports/phase1.md` and the run log. This section is about why they came out the way they did.
+
+**Two readouts of confidence, and SFT trained only one.**
+- The model expresses confidence in two places: the number it writes, and the probability it puts on the letter it picks.
+- SFT trained the letter with cross-entropy. Cross-entropy is a proper scoring rule: its expected value is lowest when the predicted probabilities equal the true ones. So SFT pushed the letter probabilities toward honest values on the kind of item it saw.
+- The effect is large. The base model's letter probabilities need temperatures of 4.4–6.4 to be calibrated, which means they are far too sure. M1's need 1.01–1.17. On the held-out test, M1's raw letter probabilities already have a Brier score of 0.078, the same as with the fitted temperature. M2-logit's strength comes from SFT, not from the temperature.
+- The written number was masked out of the loss, so nothing trained it, and it stayed a habit: 0.95 on 90% of answers.
+- M4 applies a proper scoring rule to the written number: the Brier term in its reward. The question is whether that does for the number what cross-entropy did for the letter, and whether it holds under shift.
+
+**A calibration map describes the data it was fitted on.**
+- The Platt map learned that on seen categories a stated 0.95 is right 97–99% of the time. On held-out categories M1 writes the same 0.95 and is right far less often, so the map pushes confidence the wrong way: ECE goes from 0.051 to 0.080.
+- The threshold fails more sharply. M1 is 97.4% right on the threshold half, so "fill as much as possible with at most 5% errors" ends up filling nearly everything. On held-out categories that means 10.5% errors, twice the target.
+- A ranking can survive a shift that the numbers attached to it do not. M2-logit still orders held-out answers well (AUROC 0.86), and its most confident 83.9% have 5% error. But both its numbers and its threshold were set on seen categories.
+
+**Where M4 could win.**
+- The primary comparison asks M4 to beat M2-logit's held-out Brier score of 0.078 (redacted text, clean items, both attributes). The Brier score rewards both ranking and calibration, so M4 can win on either.
+- One gap is visible already. When the text is redacted on held-out items, accuracy falls 7.2 points, the written confidence falls 0.5 points, and the letter probability falls 9.8. Making the written number react to missing evidence takes training on the number itself.
+
+Code: `scripts/report_phase1.py`, `src/pac/methods.py`. Results: `reports/phase1.md`.

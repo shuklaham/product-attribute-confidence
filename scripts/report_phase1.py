@@ -24,8 +24,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from pac import metrics, methods  # noqa: E402
-from pac.calibration import Temperature, fit_platt, fit_temperature, logit, sigmoid  # noqa: E402
+from pac import evaluation, metrics, methods  # noqa: E402
+from pac.calibration import EPSILON, Temperature, fit_platt, fit_temperature, logit, sigmoid  # noqa: E402
 
 SPLITS = {"test": "Seen test", "heldout_test": "Held-out test"}
 METHODS = {"M0": ("m0", "stated"), "M1": ("m1", "stated"), "M2": ("m1", "platt"), "M2-logit": ("m1", "letter")}
@@ -210,7 +210,7 @@ def risk_coverage_figure(confidences: dict, correct: dict, operating: dict, path
             if not math.isnan(error):
                 ax.scatter([at], [error], color=COLORS[method], s=48, edgecolor=SURFACE, linewidth=1.5, zorder=4)
         ax.axhline(0.05, linestyle="--", color=INK_2, linewidth=0.8)
-        ax.text(0.99, 0.0505, "5% error target", color=INK_2, fontsize=8, va="bottom", ha="right")
+        ax.text(0.4, 0.0495, "5% error target", color=INK_2, fontsize=8, va="top", ha="left")
         style(ax, SPLITS[split])
         ax.set_xlim(0, 1.0)
         ax.set_xlabel("Coverage (share auto-filled)", color=INK_2, fontsize=9)
@@ -298,17 +298,65 @@ def main() -> None:
                                and r["category"] == category]) for m in ("m0", "m1")}
             lines.append(f"| {SPLITS[split]} | {category} | {n:,} | {pct(acc['m0'])} | {pct(acc['m1'])} |")
 
+    lines += ["", "## Evidence sensitivity, clean items", "",
+              ("From full to redacted text on the same items: the fall in mean confidence beside the fall in accuracy, "
+              "both on the items valid in both conditions. A model that notices the missing evidence lowers its "
+              "confidence about as much as its accuracy falls."), "",
+              "| Split | Method | n | Confidence drop | Accuracy drop | Invalid, full | Invalid, redacted |",
+              "|---|---|---:|---:|---:|---:|---:|"]
+    for split in SPLITS:
+        for name, (source, key) in METHODS.items():
+            scored = {}
+            for condition in ("full", "redacted"):
+                records = [r for r in runs[source][split] if r["condition"] == condition and r["clean"]]
+                scored[condition] = [dict(r, confidence=q)
+                                     for r, q in zip(records, methods.confidence(records, key, fitted))]
+            s = evaluation.evidence_sensitivity(scored["full"], scored["redacted"])
+            lines.append(f"| {SPLITS[split]} | {name} | {s['n']:,} | {s['confidence_drop']:+.3f} | "
+                         f"{s['accuracy_drop']:+.3f} | {pct(s['invalid_full'])} | {pct(s['invalid_redacted'])} |")
+
     stated = Counter(r["confidence"] for s in SPLITS for r in runs["m1"][s] if r["confidence"] is not None)
     total = sum(stated.values())
     lines += ["", "## M1's stated confidence", "",
               f"Across both test splits, M1 states {len(stated)} distinct values. Most common: "
               + ", ".join(f"{v:g} ({n / total:.1%})" for v, n in stated.most_common(5)) + "."]
+    fitted_on = [r["confidence"] for s in ("cal_fit", "cal_threshold", *SPLITS) for r in runs["m1"][s]
+                 if r["confidence"] is not None]
+    clipped = sum(not EPSILON <= v <= 1 - EPSILON for v in fitted_on)
+    lines += ["", (f"Clip check: {clipped} of {len(fitted_on):,} stated values in M1's calibration and test runs lie "
+                   f"outside [{EPSILON}, {1 - EPSILON}], the range the Platt map clips to"
+                   + (", so the clip never binds and M2 does not depend on it." if not clipped
+                      else ", so M2 depends on where the clip puts them."))]
+
+    m0_fitted = methods.fit(load_run(art, "m0_cal_fit"))
+    lines += ["", "## Letter probabilities before and after SFT", "",
+              ("Temperatures fitted the same way on each model's own map-fitting predictions: 1 means the letter "
+               "probabilities need no correction, above 1 means they are overconfident."), "",
+              "| Attribute | Text | Temperature, M0 | Temperature, M1 |", "|---|---|---:|---:|"]
+    for key in sorted(fitted.temperature):
+        lines.append(f"| {key[0]} | {key[1]} | {m0_fitted.temperature[key].t:.2f} | {fitted.temperature[key].t:.2f} |")
+    untempered = methods.Fitted(fitted.platt, {key: Temperature(1.0) for key in fitted.temperature})
+    lines += ["", "M1's letter probabilities without and with the fitted temperature, redacted text, clean items:", "",
+              "| Split | Brier, temperature 1 | Brier, fitted | ECE, temperature 1 | ECE, fitted |",
+              "|---|---:|---:|---:|---:|"]
+    for split in SPLITS:
+        records = [r for r in runs["m1"][split] if r["condition"] == "redacted" and r["clean"]]
+        c = [r["correct"] for r in records]
+        raw, scaled = (methods.confidence(records, "letter", f) for f in (untempered, fitted))
+        lines.append(f"| {SPLITS[split]} | {num(metrics.brier(raw, c, invalid_loss=1.0))} | "
+                     f"{num(metrics.brier(scaled, c, invalid_loss=1.0))} | {num(metrics.ece(raw, c))} | "
+                     f"{num(metrics.ece(scaled, c))} |")
 
     args.figures.mkdir(parents=True, exist_ok=True)
     reliability_figure(confidences, correct, args.figures / "phase1_reliability.png")
     risk_coverage_figure(confidences, correct, operating, args.figures / "phase1_risk_coverage.png")
-    lines += ["", "## Figures", "", "![Reliability](figures/phase1_reliability.png)", "",
-              "![Risk–coverage](figures/phase1_risk_coverage.png)", "",
+    lines += ["", "## Figures", "", "![Reliability](figures/phase1_reliability.png)", ""]
+    top_bins = {min(int(v * 10), 9) for v in stated}
+    if len(top_bins) == 1:
+        lines += [(f"Reliability: M1's stated values ({', '.join(f'{v:g}' for v in sorted(stated))}) all fall in one "
+                   "bin, so its diagram shows a single point and its ECE pools them; the Brier score and AUROC still "
+                   "tell them apart."), ""]
+    lines += ["![Risk–coverage](figures/phase1_risk_coverage.png)", "",
               ("Risk–coverage: lines rank both attributes together, with ties in a random order, so a method that "
               "states one value for every item draws a flat line at its overall error rate. Dots are the outcome of "
               "each method's frozen thresholds, which are set per attribute, so a dot can sit off its line. M2 is left "

@@ -231,3 +231,48 @@ The two text-only flags ("vest", a lone "three quarter") turned out to be loose 
 - the image budget is frozen.
 
 Milestone 2 is complete.
+
+## 2026-10-26 to 2026-10-28: Milestone 3, SFT and the cheap fixes
+
+**Ran**
+- One A40 pod (Runpod Secure Cloud, EU-SE-1) without a network volume. A 6-step training smoke test passed, then `scripts/pod/phase1.sh` ran unattended at commit `fdbc5b9` for 3 hours 45 minutes:
+  - M0 on both calibration halves and both test splits;
+  - LoRA SFT at learning rates 5e-5, 1e-4 and 2e-4: one pass over the 7,717 training items, 483 steps of 16 examples, 64 minutes each, each followed by the adapter on dev;
+  - M1, at the chosen rate, on both calibration halves and both test splits.
+- The outputs were copied back and checked against checksums made on the pod (38 files), then the pod was deleted.
+- `scripts/report_phase1.py` fitted the maps and thresholds locally, and wrote `reports/phase1.md` and two figures in `reports/figures/`.
+
+**Cost**
+- Runpod billing, read after the delete: $21.74 for the project so far ($21.44 GPU, $0.30 disk). Nearly all of it is this pod: 37 hours at $0.59/hr.
+- About 4 hours of that were work (about $2.40). The other 33 hours (about $19.50) were idle. The pipeline finished at 19:35 UTC on 2026-10-26, but the only thing watching it was one SSH connection from the laptop. That connection dropped when the laptop lost its network, and nothing on the pod shut it down, so it billed until the next session found it on 2026-10-28.
+- The fix is in the decision log: from Milestone 4 on, the pod stops itself.
+- Lost: the console output of each step (`/root/logs/` on the pod), which was not copied before the delete. The training loss curves survive in each run record (`log_history`, every 10 steps).
+
+**Findings** (redacted text, clean items, both attributes pooled; intervals are 95% from the paired family bootstrap)
+- **Learning rate.** All three rates reach 98.1–98.4% on redacted dev with no invalid outputs, and the rule picks 2e-4. The training loss ends near 0.006 for all three, because most target tokens are fixed JSON.
+- **SFT raises accuracy, also on categories it never saw.**
+  - Seen test: 93.8% to 98.4% (+4.6 points, +3.4 to +5.9).
+  - Held-out test: 82.8% to 89.3% (+6.6 points, +5.1 to +8.2).
+  - Shirts go from 76.9% to 99.6%: the catalog's convention for rolled-up sleeves is learned. Nightdress is the one held-out category that gets worse, from 92.6% to 86.8% (204 items).
+- **M1's stated confidence still says almost nothing.** It states 0.95 on 89.6% of answers, 0.9 on 5.4% and 0.98 on 5.0%. Its AUROC is 0.66 on the seen test and 0.63 on the held-out test, against 0.50 for M0. On held-out items, redacting the text lowers accuracy by 7.2 points and stated confidence by 0.5 points.
+- **M2-logit is the strongest method on every metric where the methods can differ.**
+  - Held-out Brier score 0.078, against 0.096 for M1 (difference −0.017, −0.025 to −0.008) and 0.099 for M2 (−0.020, −0.053 to −0.009).
+  - AUROC 0.86 against 0.63 for M1; ECE 0.040 against 0.051.
+  - On held-out items, its confidence falls 9.8 points when the text is redacted, while accuracy falls 7.2.
+  - Its strength comes from SFT, not from the temperature. The base model's letter probabilities need temperatures of 4.4–6.4; M1's need 1.01–1.17, and on the held-out test M1's raw letter probabilities have the same Brier score, 0.078, as the temperature-scaled ones.
+- **The Platt map on stated confidence does not survive the shift.** On the seen test it lowers ECE from 0.034 to 0.013. On the held-out test it raises ECE from 0.051 to 0.080 and does not improve the Brier score (+0.003, −0.005 to +0.036). On seen categories a stated 0.95 is right 97–99% of the time, and the map carries that over to categories where it is not.
+- **Thresholds chosen on seen categories do not transfer.**
+  - M1 is 97.4% right on the threshold half, so for M1, M2 and M2-logit the lowest qualifying threshold accepts nearly everything.
+  - On held-out items, those frozen thresholds auto-fill 99.5–99.7% of answers at 10.5–10.6% error, twice the 5% target.
+  - M2-logit's ranking allows more: its most confident 83.9% of held-out answers have 5% error. No threshold fitted on seen categories finds that point.
+- **Clip check:** M1 states no value outside [0.005, 0.995], so M2 does not depend on the clip.
+- No invalid outputs in any run.
+
+**Decision:** GPU pods stop themselves (decision log, 2026-10-28).
+
+**Milestone 3 exit criteria:** `reports/phase1.md` has the reliability and risk–coverage figures and the distribution of M1's stated confidence. Milestone 3 is complete.
+
+**Next**
+- Milestone 4 needs a learning signal. M1 is about 98% right on seen categories, so most groups of 8 sampled answers will be all right and teach nothing. Measure that share before any RL run, and set the data mix and sampling temperature on dev only.
+- Re-check TRL issue #6294 (vLLM with multimodal prompts) before choosing how GRPO generates its samples.
+- For the author, optional: the blind review in the app (73 items left).
