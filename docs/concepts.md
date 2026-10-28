@@ -139,7 +139,7 @@ Each metric answers a different question, and a method can win on one while losi
 
 **Why calibration alone is not enough.** A model that states its average accuracy for every item has an ECE of zero, but it cannot tell easy items from hard ones (AUROC 0.5), so it is useless for auto-fill.
 
-**What the Platt map can and cannot change.** With a > 0 the map is increasing, so it keeps the order of confidences. M2 then has M1's AUROC, risk–coverage curve and auto-fill coverage: the same items clear the threshold, and only the numbers attached to them change. (Stated values above 0.995 tie after clipping, see below, so that holds unless the model uses several of them.) M2 can improve only Brier and ECE. If M4 fills more than M2 at the same error, RL must have changed which items the model is confident about.
+**What the Platt map can and cannot change.** With a > 0 the map is increasing, so it keeps the order of confidences within the group it was fitted on, one attribute under one text condition. There, M2 has M1's AUROC, risk–coverage curve and auto-fill coverage: the same items clear the threshold, and only the numbers attached to them change. (Stated values above 0.995 tie after clipping, see below, so that holds unless the model uses several of them.) Pooled over both attributes, the order can change, because each attribute gets its own map. In phase 1, a stated 0.95 on redacted text becomes 0.965 for neckline and 0.987 for sleeve length, so sleeve answers move ahead of neckline answers. That reordering across attributes is all M2 adds to the pooled AUROC and risk–coverage area: on the held-out test the pooled AUROC goes from 0.63 to 0.75, while within each attribute it does not move. An earlier version of this section said M2 always keeps M1's AUROC; the phase-1 tables showed that holds only within an attribute. If M4 fills more than M2 at the same error, RL must have changed which items the model is confident about.
 
 **Two edge cases.**
 - Invalid outputs count as wrong and are never auto-filled, so they rank last in the risk–coverage area. That makes an invalid output score like a wrong answer given the lowest confidence: no better than an honest low-confidence answer, but better than a confidently wrong one. The same holds for AUROC and ECE, which skip invalid outputs, and for the Brier score on valid outputs only. The Brier score with each invalid output counted as a loss of 1, the worst possible, is the one variant an invalid output can never improve, so the primary comparison uses it, and the invalid rate is reported beside every ranking metric. An earlier draft of this section claimed an invalid output could never improve any score; the review showed that was wrong.
@@ -153,6 +153,13 @@ Each metric answers a different question, and a method can win on one while losi
 - Platt map: q′ = sigmoid(a · logit(q) + b), with a and b chosen to minimize cross-entropy by Newton's method. a stays at or above 0, so the map never reverses the order. If the best fit would need a < 0, meaning higher stated confidence goes with lower accuracy, the map becomes the constant base rate. If every stated value is the same, the data say nothing about the slope, so a stays at 1 and only the level moves.
 - 0 and 1 have no finite logit, so stated confidence is clipped to [0.005, 0.995] first. Models state confidence in steps of 0.01 or coarser, so a stated 1.0 is read as half a step above 0.99. The clip is fixed in advance because it matters: with many stated 1.0s it decides where that cluster sits on the logit axis, and the fit follows.
 - Temperature: the answer-letter probabilities become softmax(log-probabilities / t), with t chosen to minimize the negative log-likelihood of the correct letters by golden-section search. A t above 1 softens overconfident probabilities. The chosen letter never changes, so accuracy is unchanged.
+
+**Each group gets its own map.** The Platt map, the temperature and the threshold are fitted separately for each attribute and text condition. Neckline offers 9 options and sleeve length 4, and the model is far more accurate when the text states the answer. So one map shared across those groups would be wrong for each of them.
+
+**A fitting bug worth remembering.** The first Platt fit used plain Newton steps. It failed on exactly the input this project produces: every stated confidence at 0.95 while the true hit rate is far lower. From that start the sigmoid is almost flat, so the first step overshot and the fit ran away to 1.0.
+- **The fix:** start the intercept from its closed-form value, halve any step that would raise the loss, and use convexity to fall back to a = 0 when the best slope is negative.
+- **The checks:** tests now cover constant inputs far from the hit rate, plus a brute-force search of the same objective.
+- **The lesson:** test an optimizer on the inputs it will really see, not just on well-behaved random data.
 
 **Intervals.** Differences between methods come from a paired bootstrap over product families. Each resample draws families with replacement, keeps every row of a drawn family together, and scores both methods on the same draw. Colour variants are near-duplicates, so resampling single items would overstate the evidence and make the intervals too narrow. M2's Platt map and M2-logit's temperature are themselves estimates from a few hundred calibration items, so for those methods each draw also refits the map on a resample of the calibration families. A statistic that is undefined on some draw, such as AUROC on a draw with no wrong answers, stops the bootstrap with an error instead of quietly shrinking the interval.
 
@@ -170,3 +177,45 @@ M2-logit needs the probability the model gives each option letter, not just the 
 - The parser also rejects a repeated key: JSON would keep the last value, while the letter probabilities are read where the first one was written.
 
 Code: `src/pac/inference.py`, `src/pac/evaluation.py`, `scripts/predict.py`. Tests: `tests/test_inference.py`.
+
+## 12. Training M1
+
+M1 is the base model plus a small trained add-on, a LoRA adapter.
+- **What changes:** rank-16 low-rank updates on the language model's attention and MLP projections, 252 modules in all. That is 33 million trainable parameters, under 1% of the model. The vision encoder is frozen; the training script lists every adapted module and refuses to run if any lies outside the language model.
+- **What the model sees:**
+  - Each training item appears once per pass over the data.
+  - A seeded coin flip per (family, attribute, pass) decides full or redacted text, so colour variants share a condition and every model gets the same draws.
+  - The answer options are reshuffled each pass, so the position of the right letter carries no signal: each letter is right about 1/9 of the time for neckline and 1/4 for sleeve length.
+- **What it learns:**
+  - The target is the JSON answer, in the layout the base model already writes.
+  - The loss covers the answer letter, the JSON punctuation and the end-of-turn token, but not the confidence number. Run against the real tokenizer, exactly the four tokens of "0.95" are left out.
+  - The catalog has no true confidence to copy, and copying any fixed number would only teach that number.
+- **Choosing the learning rate:** from 5e-5, 1e-4 and 2e-4, by a rule fixed before training: the highest accuracy on redacted dev, counting invalid outputs as wrong, then fewer invalid outputs, then the lower rate.
+- **Serving it:**
+  - vLLM loads the adapter directly. Loading without an error proves nothing, so a check ran the same prompts with and without the adapter, with prefix caching off.
+  - The adapter moved the letter log-probabilities by up to 6.6, while two runs of the base model differed by at most 0.375.
+- **A version detail:** transformers 5.19 needs `mm_token_type_ids`, which marks which tokens are image tokens, to build Qwen3-VL's position encoding. The training batches carry the processor's markers through.
+
+Code: `src/pac/sft.py`, `scripts/train_sft.py`, `scripts/predict.py`. Tests: `tests/test_sft.py`.
+
+## 13. What the supervised phase showed
+
+The numbers are in `reports/phase1.md` and the run log. This section is about why they came out the way they did.
+
+**Two readouts of confidence, and SFT trained only one.**
+- The model expresses confidence in two places: the number it writes, and the probability it puts on the letter it picks.
+- SFT trained the letter with cross-entropy. Cross-entropy is a proper scoring rule: its expected value is lowest when the predicted probabilities equal the true ones. So SFT pushed the letter probabilities toward honest values on the kind of item it saw.
+- The effect is large. The base model's letter probabilities need temperatures of 4.4–6.4 to be calibrated, which means they are far too sure. M1's need 1.01–1.17. On the held-out test, M1's raw letter probabilities already have a Brier score of 0.078, the same as with the fitted temperature. M2-logit's strength comes from SFT, not from the temperature.
+- The written number was masked out of the loss, so nothing trained it, and it stayed a habit: 0.95 on 90% of answers.
+- M4 applies a proper scoring rule to the written number: the Brier term in its reward. The question is whether that does for the number what cross-entropy did for the letter, and whether it holds under shift.
+
+**A calibration map describes the data it was fitted on.**
+- The Platt map learned that on seen categories a stated 0.95 is right 97–99% of the time. On held-out categories M1 writes the same 0.95 and is right far less often, so the map pushes confidence the wrong way: ECE goes from 0.051 to 0.080.
+- The threshold fails more sharply. M1 is 97.4% right on the threshold half, so "fill as much as possible with at most 5% errors" ends up filling nearly everything. On held-out categories that means 10.5% errors, twice the target.
+- A ranking can survive a shift that the numbers attached to it do not. M2-logit still orders held-out answers well (AUROC 0.78 for neckline and 0.84 for sleeve length, against 0.59 and 0.55 for M1's written number), and its most confident 83.9% have 5% error. But both its numbers and its threshold were set on seen categories.
+
+**Where M4 could win.**
+- The primary comparison asks M4 to beat M2-logit's held-out Brier score of 0.078 (redacted text, clean items, both attributes). The Brier score rewards both ranking and calibration, so M4 can win on either.
+- One gap is visible already. When the text is redacted on held-out items, accuracy falls 7.2 points, the written confidence falls 0.5 points, and the letter probability falls 9.8. Making the written number react to missing evidence takes training on the number itself.
+
+Code: `scripts/report_phase1.py`, `src/pac/methods.py`. Results: `reports/phase1.md`.

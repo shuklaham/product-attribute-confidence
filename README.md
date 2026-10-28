@@ -36,11 +36,11 @@ The label set, aliases and redaction phrases are in [configs/ontology.yaml](conf
 
 ## Model runs
 
-Inference runs on a Linux GPU pod; the tables can be made anywhere.
+Training and inference run on a Linux GPU pod; the tables and the report can be made anywhere.
 
 ```
-# On the pod: vLLM 0.32 and torch 2.13 (CUDA 13 wheels; NVIDIA driver 580 or newer)
-uv sync --group gpu
+# On the pod: vLLM 0.32 and torch 2.13 (CUDA 13 wheels; NVIDIA driver 580 or newer), plus the pinned model
+bash scripts/pod/setup.sh
 
 # A smoke test, then the base model on dev in both text conditions, then the text-only redaction check
 uv run --group gpu python -I scripts/predict.py data/processed/v1/dev.jsonl data/images artifacts/m0_dev_smoke --limit 16
@@ -50,6 +50,16 @@ uv run --group gpu python -I scripts/predict.py data/processed/v1/dev.jsonl data
 # Metric tables
 uv run python -I scripts/evaluate.py artifacts/m0_dev/predictions.jsonl artifacts/m0_dev_text_only/predictions.jsonl \
     --train data/processed/v1/train.jsonl --out reports/m0_dev.md
+
+# Phase 1 on the pod: M0 on the calibration and test splits, LoRA SFT at three learning rates, the learning-rate
+# rule on redacted dev, then M1 on the calibration and test splits (about 4 hours on an A40)
+bash scripts/pod/phase1.sh
+# One SFT run, and one split with its adapter
+uv run --group gpu python -I scripts/train_sft.py data/processed/v1/train.jsonl data/images artifacts/m1_lr2e-4 --lr 2e-4
+uv run --group gpu python -I scripts/predict.py data/processed/v1/test.jsonl data/images artifacts/m1_test --lora artifacts/m1_lr2e-4/adapter
+
+# Phase-1 report, locally: maps, thresholds, tables, figures and bootstrap intervals (about 2 minutes)
+uv run python -I scripts/report_phase1.py
 ```
 
 Each run writes `predictions.jsonl` and a run record (`run.json`: git commit, model revision, package versions, GPU, time) under `artifacts/`, which is gitignored. Only the aggregated tables in `reports/` are committed.
@@ -75,10 +85,10 @@ The tests use small synthetic products, so they run without the dataset. They co
 | Path | Contents |
 |---|---|
 | `src/pac/` | Library: ontology, records, splits, redaction, examples, prompt, output parser, rewards, metrics, calibration, inference, evaluation |
-| `scripts/` | Pipeline steps, model runs and reports |
+| `scripts/` | Pipeline steps, model runs and reports; `scripts/pod/` holds the scripts that run on the GPU pod |
 | `configs/` | Label set and phrase lists |
 | `manifests/` | Frozen splits and label decisions (IDs and hashes only) |
-| `reports/` | Data audit and image check |
+| `reports/` | Data audit, image check, model results and figures |
 | `annotations/` | Hand-check verdicts |
 | `app/` | Review app |
 | `docs/` | Plan, concepts and run log |

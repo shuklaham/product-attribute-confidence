@@ -71,3 +71,28 @@ def test_temperature_refuses_bad_inputs_and_warns_at_the_bound():
         warnings.simplefilter("always")
         fit_temperature(np.array([[-0.1, -2.3], [-2.3, -0.1]]), [1, 0])
     assert any("edge of the search range" in str(w.message) for w in caught)
+
+
+@pytest.mark.parametrize("stated, hit_rate", [(0.95, 0.6125), (0.99, 0.3), (0.6, 0.97)])
+def test_platt_on_a_constant_far_from_the_hit_rate_converges(stated, hit_rate):
+    # Regression: a plain Newton step overshot from a stated 0.95 and ran away to 1.0.
+    n = 800
+    correct = np.r_[np.ones(round(n * hit_rate)), np.zeros(n - round(n * hit_rate))]
+    fitted = fit_platt(np.full(n, stated), correct)
+    assert fitted(np.array([stated]))[0] == pytest.approx(hit_rate, abs=0.005)
+
+
+def test_platt_matches_a_brute_force_search_of_the_same_objective():
+    rng = np.random.default_rng(3)
+    for _ in range(5):
+        q = rng.choice([0.6, 0.8, 0.9, 0.95, 0.99, 1.0], size=300)
+        correct = (rng.random(300) < rng.uniform(0.3, 0.9)).astype(float)
+        fitted = fit_platt(q, correct)
+        x = logit(q)
+        grid_a, grid_b = np.meshgrid(np.linspace(0, 3, 301), np.linspace(-6, 6, 601))
+        z = grid_a[..., None] * x + grid_b[..., None]
+        losses = (np.logaddexp(0, z) - correct * z).sum(-1) + 0.5e-3 * (grid_a ** 2 + grid_b ** 2)
+        best = np.unravel_index(losses.argmin(), losses.shape)
+        z_fit = fitted.a * x + fitted.b
+        fit_loss = (np.logaddexp(0, z_fit) - correct * z_fit).sum() + 0.5e-3 * (fitted.a ** 2 + fitted.b ** 2)
+        assert fit_loss <= losses[best] + 1e-6

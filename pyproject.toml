@@ -11,9 +11,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "matplotlib>=3.11.2",
     "pytest>=9.1.1",
 ]
 gpu = [
+    "accelerate==1.15.0 ; sys_platform == 'linux'",
+    "peft==0.21.2 ; sys_platform == 'linux'",
     "vllm==0.32.0 ; sys_platform == 'linux'",
 ]
 
