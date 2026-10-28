@@ -210,6 +210,18 @@ def mean(values) -> float:
     return sum(values) / len(values) if values else float("nan")
 
 
+def rank_correlation(x, y) -> float:
+    """Spearman's rank correlation, ties given their average rank; NaN if either side is constant."""
+    def ranks(values):
+        _, inverse, counts = np.unique(np.asarray(values, dtype=float), return_inverse=True, return_counts=True)
+        return (np.cumsum(counts) - (counts - 1) / 2)[inverse]
+
+    rx, ry = ranks(x), ranks(y)
+    if rx.std() == 0 or ry.std() == 0:
+        return float("nan")
+    return float(np.corrcoef(rx, ry)[0, 1])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
@@ -350,6 +362,37 @@ def main() -> None:
         common = ", ".join(f"{v:g} ({n / total:.1%})" for v, n in stated.most_common(4))
         below = sum(n for v, n in stated.items() if v < 0.9) / total
         lines.append(f"| {name} | {len(stated)} | {common} | {pct(below)} |")
+
+    lines += ["", "## Does the written confidence follow the model's own letter probability? (exploratory)", "",
+              ("Rank correlation, on the held-out test (redacted text, clean items, valid outputs), between the "
+               "confidence a model writes and the probability it gives the letter it chose. 1 would mean the written "
+               "number orders answers exactly as the model's internal probability does. Not part of the "
+               "pre-registered comparisons."), "", "| Model | n | Rank correlation |", "|---|---:|---:|"]
+    for name, source in (("M1", "m1"), ("M3", "m3"), ("M4", "m4")):
+        pairs = [(r["confidence"], evaluation.letter_confidence(r)) for r in runs[source]["heldout_test"]
+                 if r["condition"] == "redacted" and r["clean"] and r["error"] is None]
+        pairs = [(q, p) for q, p in pairs if p is not None]
+        written, letter = zip(*pairs)
+        lines.append(f"| {name} | {len(pairs):,} | {num(rank_correlation(written, letter))} |")
+
+    lines += ["", "## Held-out test by category, redacted text, clean items (exploratory)", "",
+              ("| Category | n | Accuracy, M1 | Accuracy, M3 | Accuracy, M4 | Brier, M2-logit | Brier, M3 | "
+               "Brier, M4 |"), "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    categories = Counter(r["category"] for r in runs["m1"]["heldout_test"]
+                         if r["condition"] == "redacted" and r["clean"])
+    for category, n in categories.most_common():
+        cells = []
+        for name in ("M1", "M3", "M4"):
+            records = [r for r in runs[METHODS[name][0]]["heldout_test"]
+                       if r["condition"] == "redacted" and r["clean"] and r["category"] == category]
+            cells.append(pct(float(np.mean([r["correct"] for r in records]))))
+        for name in ("M2-logit", "M3", "M4"):
+            source, key = METHODS[name]
+            records = [r for r in runs[source]["heldout_test"]
+                       if r["condition"] == "redacted" and r["clean"] and r["category"] == category]
+            cells.append(num(metrics.brier(methods.confidence(records, key, fitted), [r["correct"] for r in records],
+                                           invalid_loss=1.0)))
+        lines.append(f"| {category} | {n:,} | " + " | ".join(cells) + " |")
 
     lines += ["", "## Thresholds", "",
               ("Each method's frozen auto-fill threshold, chosen on its threshold-half predictions (infinity: accept "
