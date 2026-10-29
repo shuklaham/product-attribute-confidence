@@ -43,7 +43,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 60
     continue
   fi
-  echo "$(stamp) $(on_pod 'tail -n 1 /workspace/logs/phase2.log' 2> /dev/null)"
+  echo "$(stamp) $(on_pod 'tail -n 1 $(ls -t /workspace/logs/phase*.log | head -n 1)' 2> /dev/null)"
   sleep "${POLL:-300}"
 done
 echo "$(stamp) deadline passed"
