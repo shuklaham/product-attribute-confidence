@@ -53,11 +53,13 @@ def mean(values) -> float:
     return sum(values) / len(values) if values else float("nan")
 
 
-def bootstrap(cal: dict, test: dict, others: dict, resamples: int, seed: int = 0) -> dict:
-    """Paired family bootstrap on one test set; M2's and M2-logit's maps are refitted every draw.
+def bootstrap(cal: dict, test: dict, others: dict, cal5: dict, test5: dict, resamples: int, seed: int = 0) -> dict:
+    """Paired family bootstrap on one test set; every map is refitted every draw.
 
     cal and test map attribute -> arrays of M1's records; others maps every stated method to arrays
-    of its records for the same test items, in the same order.
+    of its records for the same test items, in the same order. cal5 and test5 hold M5's records for
+    the same calibration and test items, for the exploratory M5 + Platt and M5-logit, whose maps are
+    fitted on M5's own calibration predictions.
     """
     cal_index, n_cal = family_index(cal)
     test_index, n_test = family_index(test)
@@ -76,6 +78,14 @@ def bootstrap(cal: dict, test: dict, others: dict, resamples: int, seed: int = 0
             for name, values in (("M1", test[k]["stated"][test_rows]), ("M2", m2), ("M2-logit", m2_logit)):
                 q[name].append(values)
                 c[name].append(test[k]["correct"][test_rows])
+            fit5 = cal5[k]
+            platt5 = fit_platt(fit5["stated"][cal_rows], fit5["correct"][cal_rows])
+            with_letters5 = cal_rows[fit5["has_letters"][cal_rows]]
+            t5 = fit_temperature(fit5["letters"][with_letters5], fit5["answer"][with_letters5], iterations=40).t
+            m5_platt, m5_logit = mapped(test5[k], test_rows, platt5, t5)
+            for name, values in (("M5 + Platt", m5_platt), ("M5-logit", m5_logit)):
+                q[name].append(values)
+                c[name].append(test5[k]["correct"][test_rows])
             for name in others:
                 q[name].append(others[name][k]["stated"][test_rows])
                 c[name].append(others[name][k]["correct"][test_rows])
@@ -98,6 +108,10 @@ def bootstrap(cal: dict, test: dict, others: dict, resamples: int, seed: int = 0
         }
         for s in SEEDS:
             out[f"Brier, M4 v2 s{s} minus M2-logit"] = brier[f"M4 v2 s{s}"] - brier["M2-logit"]
+        out |= {"Brier, M5 + Platt minus M2-logit (exploratory)": brier["M5 + Platt"] - brier["M2-logit"],
+                "Brier, M5-logit minus M2-logit (exploratory)": brier["M5-logit"] - brier["M2-logit"],
+                "AUROC, M5-logit minus M2-logit (exploratory)": metrics.auroc(q["M5-logit"], c["M5-logit"])
+                - auroc["M2-logit"]}
         return out
 
     point = statistics(np.ones(n_cal, dtype=int), np.ones(n_test, dtype=int))
@@ -117,9 +131,14 @@ def bootstrap(cal: dict, test: dict, others: dict, resamples: int, seed: int = 0
 
 
 def decompose(q: list, correct: list, group) -> dict:
-    """Murphy's decomposition of the Brier score, exact when each group holds one value."""
+    """Murphy's decomposition of the Brier score, exact when each group holds one value.
+
+    Answers without a confidence are left out; the Brier column counts them separately.
+    """
+    pairs = [(v, c) for v, c in zip(q, correct) if v is not None]
+    correct = [c for _, c in pairs]
     groups = defaultdict(list)
-    for v, c in zip(q, correct):
+    for v, c in pairs:
         groups[group(v)].append((v, c))
     n, a = len(correct), sum(correct) / len(correct)
     calibration = sum(len(g) / n * (np.mean([v for v, _ in g]) - np.mean([c for _, c in g])) ** 2
@@ -160,7 +179,7 @@ def signal_figure(histories: dict, path: Path) -> None:
                 ax.plot([x["step"] for x in h], rolling([x["no_correctness_signal"] for x in h]), color=COLORS[arm],
                         linewidth=1.4, alpha=0.55 + 0.15 * s, label=f"v2 seed {s}")
         ax.axhline(0.8, linestyle=":", color=INK_2, linewidth=0.8)
-        ax.text(5, 0.805, "stop line", color=INK_2, fontsize=8, va="bottom")
+        ax.text(455, 0.795, "stop line", color=INK_2, fontsize=8, va="top", ha="right")
         style(ax, arm)
         ax.set_xlabel("Step (trailing mean over 10 steps)", color=INK_2, fontsize=9)
         ax.legend(frameon=False, fontsize=8, labelcolor=INK)
@@ -205,7 +224,11 @@ def main() -> None:
     sources = {source for source, _ in METHODS.values()}
     runs = {source: {s: load_run(art, f"{source}_{s}") for s in ("cal_threshold", *SPLITS)} for source in sources}
     runs["m1"]["cal_fit"] = load_run(art, "m1_cal_fit")
+    runs["m5"]["cal_fit"] = load_run(art, "m5_cal_fit")
     fitted = methods.fit(runs["m1"]["cal_fit"])
+    fitted5 = methods.fit(runs["m5"]["cal_fit"])  # the exploratory M5 + Platt and M5-logit
+    extra = {"M5 + Platt (exploratory)": ("platt", methods.thresholds(runs["m5"]["cal_threshold"], "platt", fitted5)),
+             "M5-logit (exploratory)": ("letter", methods.thresholds(runs["m5"]["cal_threshold"], "letter", fitted5))}
     thresholds = {name: methods.thresholds(runs[source]["cal_threshold"], key, fitted)
                   for name, (source, key) in METHODS.items()}
 
@@ -247,17 +270,22 @@ def main() -> None:
     confidences, correct = {}, {}
     intervals = {}
     for split in SPLITS:
-        cal, test, others = {}, {}, {m: {} for m in STATED}
+        cal, test, others, cal5, test5 = {}, {}, {m: {} for m in STATED}, {}, {}
+        m5_cal = {r["example_id"]: r for r in runs["m5"]["cal_fit"]}
+        m5_test = {r["example_id"]: r for r in runs["m5"][split]}
         for attribute in ("neckline", "sleeve_length"):
-            cal[attribute] = arrays([r for r in runs["m1"]["cal_fit"]
-                                     if r["condition"] == "redacted" and r["attribute"] == attribute])
+            cal_records = [r for r in runs["m1"]["cal_fit"]
+                           if r["condition"] == "redacted" and r["attribute"] == attribute]
+            cal[attribute] = arrays(cal_records)
+            cal5[attribute] = arrays([m5_cal[r["example_id"]] for r in cal_records])
             test_records = [r for r in runs["m1"][split]
                             if r["condition"] == "redacted" and r["clean"] and r["attribute"] == attribute]
             test[attribute] = arrays(test_records)
+            test5[attribute] = arrays([m5_test[r["example_id"]] for r in test_records])
             for name in others:
                 by_id = {r["example_id"]: r for r in runs[METHODS[name][0]][split]}
                 others[name][attribute] = arrays([by_id[r["example_id"]] for r in test_records])
-        intervals[split] = bootstrap(cal, test, others, args.resamples)
+        intervals[split] = bootstrap(cal, test, others, cal5, test5, args.resamples)
     brier, accuracy = intervals["heldout_test"][PRIMARY_BRIER], intervals["heldout_test"][PRIMARY_ACCURACY]
     brier_met, accuracy_met = brier[2] < 0, accuracy[1] > -0.01
     lines += ["", "| Difference | Estimate | 95% interval | Criterion | Met |", "|---|---:|---|---|---|",
@@ -277,7 +305,10 @@ def main() -> None:
             lines.append(f"| {SPLITS[split]} | {key} | {estimate:+.4f} | {low:+.4f} to {high:+.4f} | {undefined} |")
 
     lines += ["", "## Results, held-out and seen test, redacted text, clean items", "",
-              "Pooled over both attributes; each attribute and text condition uses its own maps and threshold.", "",
+              ("Pooled over both attributes; each attribute and text condition uses its own maps and threshold. The "
+               "two exploratory M5 rows were added after the results were seen, and are not part of the pre-registered "
+               "comparisons: a Platt map on M5's written confidence, and M5's own letter probabilities with a "
+               "temperature, both fitted on M5's map-fitting predictions."), "",
               ("| Split | Method | Accuracy | Brier, invalid = 1 | ECE | AUROC | Risk–coverage area | "
                "Coverage at threshold | Error at threshold |"), "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
     for split in SPLITS:
@@ -289,12 +320,20 @@ def main() -> None:
                 confidences[name], correct[name] = q, [r["correct"] for r in records]
             lines.append(f"| {SPLITS[split]} | {name} | {pct(s['accuracy'])} | {num(s['brier'])} | {num(s['ece'])} | "
                          f"{num(s['auroc'])} | {num(s['aurc'])} | {pct(s['coverage'])} | {pct(s['risk'])} |")
+        for name, (key, chosen) in extra.items():
+            records = [r for r in runs["m5"][split] if r["condition"] == "redacted" and r["clean"]]
+            q = methods.confidence(records, key, fitted5)
+            s = evaluate(records, q, chosen)
+            if split == "heldout_test":
+                confidences[name], correct[name] = q, [r["correct"] for r in records]
+            lines.append(f"| {SPLITS[split]} | {name} | {pct(s['accuracy'])} | {num(s['brier'])} | {num(s['ece'])} | "
+                         f"{num(s['auroc'])} | {num(s['aurc'])} | {pct(s['coverage'])} | {pct(s['risk'])} |")
 
     lines += ["", "## The Brier score, decomposed (exploratory)", "",
               ("Held-out test, redacted text, clean items. Brier = calibration − resolution + uncertainty; written "
                "confidences grouped by value (exact), letter probabilities in 50 equal bins."), "",
               "| Method | Brier | Calibration | Resolution | Uncertainty | Groups |", "|---|---:|---:|---:|---:|---:|"]
-    for name, (_, key) in METHODS.items():
+    for name, key in [(m, k) for m, (_, k) in METHODS.items()] + [(m, k) for m, (k, _) in extra.items()]:
         part = decompose(confidences[name], correct[name],
                          (lambda v: min(int(v * 50), 49)) if key == "letter" else (lambda v: v))
         lines.append(f"| {name} | {metrics.brier(confidences[name], correct[name], invalid_loss=1.0):.4f} | "

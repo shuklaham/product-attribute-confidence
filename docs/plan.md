@@ -1,12 +1,13 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 4 (RL result, one seed) complete; results in `reports/phase1.md` and `reports/phase2.md`.
-- **Primary comparison:** on the held-out test with redacted text, M4 does not count as better than M2-logit. Its Brier score is 0.072 against 0.078, but the 95% interval of the difference, −0.0136 to +0.0004, crosses zero by 0.0004.
-- **Calibration against ranking:** M4's written confidence is the best calibrated of any method under the shift (ECE 0.015 against 0.040), but it ranks answers worse than M2-logit (AUROC 0.79 against 0.86).
-- **Accuracy:** M4 is 2.0 points more accurate than M1.
-- **Training signal:** both runs used up their correctness signal (91% of groups had none, past the 80% stop line), so the RL recipe gets a rethink before the Milestone 5 seeds.
+Status: Milestone 5 (RL over three seeds, M5, the photo swap) complete; results in `reports/phase1.md`, `reports/phase2.md` and `reports/phase3.md`.
+- **Milestone 4, one seed (recipe v1):** M4 does not count as better than M2-logit on the held-out test with redacted text. Its Brier score is 0.072 against 0.078, but the interval reaches +0.0004. Its written confidence is the best calibrated of any method (ECE 0.015).
+- **Milestone 5, three seeds (recipe v2):** M4 v2 is worse than M2-logit (mean Brier difference +0.017, +0.009 to +0.025). Re-sorting the prompts by the policy's own uncertainty could not stop that uncertainty from vanishing. With almost no wrong answers left in training, the Brier reward inflated the written confidence.
+- **M5 (CalibSFT-style SFT):** its written confidence ranks answers best among written confidences (AUROC 0.83) but is miscalibrated (Brier 0.095).
+- **Exploratory:** M5's own temperature-scaled letter probabilities have the best held-out Brier score of any method (0.071, against 0.078). That is a hypothesis for a pre-registered follow-up.
+- **Photo swap:** only M2-logit's letter probability and M5's written confidence drop clearly when the photo contradicts the text.
 
-Last updated 2026-10-28.
+Last updated 2026-10-29.
 
 ## 1. Question
 
@@ -210,7 +211,7 @@ All of these outcomes are reportable: RL wins under shift; the cheap fixes match
 - **Software on the pod:** `uv sync --group gpu` installs vLLM 0.32.0 with torch 2.13.0. Those torch wheels use CUDA 13, so the pod's host needs NVIDIA driver 580 or newer, and pods are created with that CUDA filter.
 - **Estimate:** 70–100 GPU-hours, about $55–75 including storage. Spending past $100 requires a review.
 - **Tracking:** spend is read from Runpod billing at each milestone and recorded in `docs/log.md`.
-- **Spent:** $26.52 through Milestone 4 (billing read 2026-10-28): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished, and about $4.78 for Milestone 4.
+- **Spent:** $47.23 through Milestone 5 (billing read 2026-10-29): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished; about $4.78 for Milestone 4; about $20.71 for Milestone 5.
 - **Local machine:** data preparation, tests and analysis.
 
 ## 9. Milestones

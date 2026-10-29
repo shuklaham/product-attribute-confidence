@@ -375,3 +375,34 @@ Milestone 4 is complete.
 - One pod runs seed 0 then M5 and the reference swaps (`EXTRA=1`); the other two run seeds 1 and 2.
 - Launched at 16:35 UTC. Each pod stops itself when its run ends, when nothing changes for 40 minutes, or after 15 hours. Three laptop watchers copy the outputs and the pods' logs.
 - Expected: about 12.5 hours and about $21.50. The 19-minute scoring passes (five per arm) explain most of the rise from the $19 quoted.
+
+**Finished.** Seeds 1 and 2 finished at 03:05 and 03:12 UTC, and seed 0 with M5 and the reference photo swaps at 03:52. Every step exited 0. Each pod stopped itself after its watcher had copied and verified its outputs, and its logs this time. All three pods were then deleted.
+
+**Cost:** Runpod billing, read after the deletes: $47.23 for the project ($46.46 GPU, $0.77 disk), so Milestone 5 cost about $20.71.
+
+**Findings** (held-out test, redacted text, clean items, both attributes pooled; intervals are 95% from the paired family bootstrap, 10,000 draws; full tables in `reports/phase3.md`)
+- **Primary comparison: M4 v2 does not count as better than M2-logit; it is worse.** Averaged over the three seeds, the Brier difference is +0.0173 (+0.0087 to +0.0248). Per seed it is +0.017, +0.008 and +0.027.
+- **Recipe v2 failed, and the mechanism is clear.**
+  - Re-scoring found 732 uncertain prompts at step 0, 161–215 at step 100, 58–82 at step 200, and 4–20 after that. The policy grew certain everywhere, so re-sorting had no uncertainty left to find.
+  - Each re-scoring briefly lowered the share of groups with no correctness signal, to 60–70%, but it climbed back each time and stayed at 96–99% after step 300. Over the run it was 86–88%, against 91% for v1.
+  - In the last third, half of every batch came from the same 4–20 prompts, redrawn dozens of times.
+  - Once the samples held almost no wrong answers, M4's Brier reward could only reward stating more confidence. Seed 0 writes 0.98 or 0.99 on every held-out answer while being right 90% of the time (ECE 0.080, AUROC 0.53). v1 kept its original hard prompts, which kept producing wrong answers, and ended at ECE 0.015.
+  - M4 v2 is also worse than M3 v2 on Brier (+0.0068, +0.0041 to +0.0096).
+- **M5 has the most informative written confidence of any model, but it is miscalibrated.**
+  - AUROC 0.833, against 0.789 for M4 v1 and 0.631 for M1; M2-logit's letter probability has 0.862.
+  - Its balanced training mix made it underconfident at the low end: answers it writes at 0–0.12 are right 52–60% of the time. That gives ECE 0.060 and Brier 0.095, worse than M2-logit (+0.0167, +0.0082 to +0.0246).
+  - It is 0.7 points more accurate than M1 (+0.04 to +1.33).
+- **Exploratory, found after the results:** M5's own letter probabilities, temperature-scaled ("M5-logit"), have the best held-out Brier score of any method: 0.0714, against 0.0784 for M2-logit (−0.0070, −0.0127 to −0.0015).
+  - Decomposed: the same resolution, better calibration (0.0028 against 0.0051), and higher accuracy, which accounts for about three-quarters of the gain.
+  - One training run and not pre-registered, so it is a hypothesis to test.
+  - A Platt map on M5's written confidence does not beat M2-logit (+0.0053, −0.0034 to +0.0167).
+- **Photo swap.**
+  - With redacted text, every model answers with the photo's label 72–85% of the time.
+  - With full text that contradicts the photo, the trained models follow the text more: M0 43%, M1 62%, M3 and M4 v2 69–74%, M5 82%.
+  - The written confidence of M0, M1, M3 v2 and M4 v2 seed 0 barely moves under the conflict (0.95 or 0.98 either way).
+  - M5's falls from 0.92 to 0.72, and M2-logit's letter probability from 0.95 to 0.74.
+
+**Next** (author's decisions):
+- Write up the study as it stands: the pre-registered verdicts for v1 and v2, the failure mechanism of v2, and M5's results.
+- Optionally, a pre-registered follow-up of the exploratory result: M5-logit against M2-logit with three SFT seeds, about $2–3.
+- Optionally, an RL recipe that keeps wrong answers in training: a KL anchor to M1, a fixed share of hard prompts in every batch, or stopping when the signal runs out.
