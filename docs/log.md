@@ -331,7 +331,7 @@ Milestone 2 is complete.
   - M3's written confidence is overconfident: its 0.8 answers are right 63% of the time.
 - **The written number now follows the model's own letter probability.** Rank correlation 0.87 for M4, 0.62 for M3 and 0.51 for M1 (exploratory).
 - **It now reacts to missing evidence, partly.** Redacting the text lowers M4's confidence by 4.0 points while its accuracy falls 5.8. For M1 the numbers were 0.5 and 7.2.
-- **M4 writes few values.** 7 distinct; 0.98 on 75% of answers, 0.95 on 11%, below 0.9 on 12%. A number with so few levels cannot order answers as finely as a probability, which likely explains its lower AUROC.
+- **M4 writes few values.** 7 distinct; 0.98 on 45% of answers, 0.95 on 22%, below 0.9 on 28%. (Corrected 2026-10-29: this line first gave 75%, 11% and 12%, which pool both test sets and both text conditions.) A number with so few levels cannot order answers as finely as a probability, which likely explains its lower AUROC.
 - **Thresholds still do not transfer.** M4's frozen thresholds auto-fill 99.8% of held-out answers at 8.6% error (M2-logit: 10.5%), still above the 5% target.
 - **On the seen test the methods tie on Brier:** M4 minus M2-logit is −0.0007 (−0.0036 to +0.0021).
 - **Training used up its own signal.**
