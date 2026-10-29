@@ -406,3 +406,26 @@ Milestone 4 is complete.
 - Write up the study as it stands: the pre-registered verdicts for v1 and v2, the failure mechanism of v2, and M5's results.
 - Optionally, a pre-registered follow-up of the exploratory result: M5-logit against M2-logit with three SFT seeds, about $2–3.
 - Optionally, an RL recipe that keeps wrong answers in training: a KL anchor to M1, a fixed share of hard prompts in every batch, or stopping when the signal runs out.
+
+## 2026-10-29: Milestone 6, three seeds for recipe v1, M5 seeds and the evidence runs
+
+**Decisions** (author, before any run; reasons in the plan's decision log):
+- seeds 1 and 2 of recipe v1 for M4 and M3, and of M5; the test of M5-logit leaves out seed 0, which suggested it;
+- photo-only and text-only runs on the photo-swap subset;
+- PR #5 was merged into main locally.
+
+**Prepared locally**
+- `train_sft.py --seed`; seed 0 is the Milestone 5 run.
+- The photo-swap subset unswapped (`subset_heldout.jsonl`, 2,000 examples: the same 1,000 items in both text conditions).
+- `scripts/pod/phase4.sh`, with plan-only tests of every command.
+
+**Pre-flight on a live pod**
+- Recipe v1 with seed 0 for 3 steps, against the Milestone 4 log:
+  - step 0 is identical: every sampled answer, so the reward, accuracy, stated values and signal share;
+  - at steps 1 and 2, accuracy and the signal share are identical and the rewards differ by at most 0.00013, from floating-point nondeterminism in the backward pass (gradient norm at step 0: 1.9926111 against 1.9926106).
+- The logged learning rate is one warm-up step lower. The Milestone 4 log recorded the next step's rate, which `4bc84f1` fixed; the update itself did not change.
+
+**Ran**
+- Two A40 pods (Secure Cloud; CA-MTL-1 and EU-SE-1), at commit `b44a038`. Each runs `scripts/pod/phase4.sh` for one seed: M4 v1, then M5, then M3 v1, each evaluated on the five splits and the swap set as soon as it is trained. Then pod A (seed 1) runs the evidence runs for M0 and M1, and pod B (seed 2) for M4 and M5.
+- Launched at 05:17 UTC. Each pod stops itself when its run ends, when nothing changes for 40 minutes, or after 12 hours. Two laptop watchers copy the outputs and the pods' logs.
+- Expected: about 8.5 hours and $10.40 (two pods at $0.59/hr).
