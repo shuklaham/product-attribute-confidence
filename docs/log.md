@@ -422,7 +422,7 @@ Milestone 4 is complete.
 **Pre-flight on a live pod**
 - Recipe v1 with seed 0 for 3 steps, against the Milestone 4 log:
   - step 0 is identical: every sampled answer, so the reward, accuracy, stated values and signal share;
-  - at steps 1 and 2, accuracy and the signal share are identical and the rewards differ by at most 0.00013, from floating-point nondeterminism in the backward pass (gradient norm at step 0: 1.9926111 against 1.9926106).
+  - at steps 1 and 2, accuracy and the signal share are identical and the rewards differ by at most 0.00013. That is floating-point rounding: step 0's gradient already differs in its seventh significant digit (norm 1.9926111 against 1.9926106), and the first update carries the difference forward.
 - The logged learning rate is one warm-up step lower. The Milestone 4 log recorded the next step's rate, which `4bc84f1` fixed; the update itself did not change.
 
 **Ran**
