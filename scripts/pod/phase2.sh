@@ -48,7 +48,7 @@ for arm in "m4 calibration" "m3 correctness"; do
   set -- $arm
   name=$1 kind=$2
   run "train_$name" $py scripts/train_grpo.py data/processed/v1/train.jsonl data/images \
-    artifacts/grpo_pool artifacts/m1_lr2e-4/adapter "artifacts/$name" --reward "$kind" || exit 1
+    artifacts/m1_lr2e-4/adapter "artifacts/$name" --reward "$kind" --pool artifacts/grpo_pool || exit 1
   # The primary split first. An evaluation can be rerun from the saved adapter, so a failed one does
   # not stop the other arm; the script still ends with a failure code.
   for split in heldout_test test cal_threshold cal_fit dev; do

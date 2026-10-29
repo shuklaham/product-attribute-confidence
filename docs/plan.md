@@ -1,12 +1,13 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 4 (RL result, one seed) complete; results in `reports/phase1.md` and `reports/phase2.md`.
-- **Primary comparison:** on the held-out test with redacted text, M4 does not count as better than M2-logit. Its Brier score is 0.072 against 0.078, but the 95% interval of the difference, −0.0136 to +0.0004, crosses zero by 0.0004.
-- **Calibration against ranking:** M4's written confidence is the best calibrated of any method under the shift (ECE 0.015 against 0.040), but it ranks answers worse than M2-logit (AUROC 0.79 against 0.86).
-- **Accuracy:** M4 is 2.0 points more accurate than M1.
-- **Training signal:** both runs used up their correctness signal (91% of groups had none, past the 80% stop line), so the RL recipe gets a rethink before the Milestone 5 seeds.
+Status: Milestone 5 (RL over three seeds, M5, the photo swap) complete; results in `reports/phase1.md`, `reports/phase2.md` and `reports/phase3.md`.
+- **Milestone 4, one seed (recipe v1):** M4 does not count as better than M2-logit on the held-out test with redacted text. Its Brier score is 0.072 against 0.078, but the interval reaches +0.0004. Its written confidence is the best calibrated of any method (ECE 0.015).
+- **Milestone 5, three seeds (recipe v2):** M4 v2 is worse than M2-logit (mean Brier difference +0.017, +0.009 to +0.025). Re-sorting the prompts by the policy's own uncertainty could not stop that uncertainty from vanishing. With almost no wrong answers left in training, the Brier reward inflated the written confidence.
+- **M5 (CalibSFT-style SFT):** its written confidence ranks answers best among written confidences (AUROC 0.83) but is miscalibrated (Brier 0.095).
+- **Exploratory:** M5's own temperature-scaled letter probabilities have the best held-out Brier score of any method (0.071, against 0.078). That is a hypothesis for a pre-registered follow-up.
+- **Photo swap:** only M2-logit's letter probability and M5's written confidence drop clearly when the photo contradicts the text.
 
-Last updated 2026-10-28.
+Last updated 2026-10-29.
 
 ## 1. Question
 
@@ -73,6 +74,10 @@ The practical use is selective auto-fill: fill a product attribute only when the
 | 2026-10-28 | Steps: 3 passes over the mixed stratum, at most 500; learning rate 1e-5, untuned | The mixed stratum is small, about 425 prompts if training items behave like dev. Each pass draws fresh samples, but more passes over the same few hundred prompts invite overfitting. The learning rate is an order of magnitude below the SFT rates, the usual gap for policy gradients, which are noisier; there is no budget to tune it |
 | 2026-10-28 | Our own GRPO loop rather than TRL's trainer | TRL's multimodal path had the vLLM bug (#6294), and it has not been shown to pass Qwen3-VL's image-token markers under transformers 5.19, which SFT needed. The loop is about 300 lines: it samples with the model's own `generate`, and a check compares its training log-probabilities with the sampler's. It also skips groups whose advantages are all zero exactly |
 | 2026-10-28 | Train and evaluate M4 before M3 | M4 is in the primary comparison; if the run is cut short, that result is ready first |
+| 2026-10-28 | Milestone 5 retrains M3 and M4 with GRPO recipe v2, three seeds each (author's decision after the 80% stop line was crossed). Every 50 steps the current policy scores every prompt by p, the probability it gives the right letter where it writes its choice (one forward pass). A prompt is mixed if 8 samples would hold both right and wrong answers with probability 1 − p⁸ − (1 − p)⁸ ≥ 0.2. Everything else stays as in v1, including 461 steps and half of each batch from each stratum. If one full scoring pass costs more than 6 minutes in the pre-flight check, re-scoring runs every 100 steps instead | Under v1 the strata were fixed at the start, and the share of groups with no correctness signal rose from 73% to 97% as the policy grew sure, even on prompts it had not yet trained on, so the policy's current uncertainty must be measured as it changes. One forward pass gives the exact chance a group is mixed, where 8 samples give a noisy count. On M1's dev predictions the threshold makes 5.6% of prompts mixed, at a 63% chance of a mixed group. The cost rule is set on cost, before any result |
+| 2026-10-28 | The Milestone 5 primary comparison is the mean over seeds 0–2 of the M4 v2 minus M2-logit Brier difference (held-out test, redacted text, clean items, pooled). Its 95% interval comes from a paired family bootstrap that resamples the test families once per draw for all seeds and refits M2-logit every draw. M4 counts as better if the interval lies below zero and the lower bound of the mean accuracy difference is above −1 point. Each seed is also reported alone. The v1 runs stay Milestone 4's result | One training seed cannot separate the method from the run. Averaging over seeds and keeping the same decision rule makes the result comparable with Milestone 4's |
+| 2026-10-28 | M5 continues M1's adapter with CalibSFT-style SFT (arXiv:2609.32470). The data is M1's own 8 sampled answers per RL prompt, from the v1 sampling pass. Each answer's confidence target is 0.5 q + 0.5 z, with q the prompt's success rate and z the answer's correctness. At most 300 answers per target value are kept (3,458; 53% wrong). The loss is 0.5 × the mean loss on confidence tokens (all answers) plus 0.5 × the mean loss on the other answer tokens (right answers only). One epoch, learning rate 1e-4, batch 16, cosine; no RL after it | CalibSFT reports what this project found, stated confidence crowding onto a few high values, and that SFT on measured success rates helps. Its recipe balances answers equally across target values. Here the rarest value has 30 answers, so a cap of 300 keeps enough data while balancing. The cap leans the training mix toward hard prompts, unlike the test mix; M5 is evaluated as trained, and that is reported |
+| 2026-10-28 | The photo swap uses 500 clean held-out items per attribute, in both text conditions. Each item gets a donor photo: a clean product of the same category, from another family, with a different label. Answers are scored against the text's label and the photo's label, and confidence is compared with the same items unswapped, for M0, M1, M2-logit, each M3 and M4 seed, and M5 | It tests whether confidence notices conflicting evidence. 76 neckline items have no donor (no same-category product with another label) and are left out |
 
 ## 3. Data
 
@@ -160,7 +165,7 @@ The core study compares five model conditions, M0 to M4, plus M2-logit, an infer
 
 M2-logit is inference only: it reads the probability M1 gives each offered letter where it writes its choice, and rescales those probabilities with one temperature fitted on the calibration split. It answers with M1's letter, so its accuracy is M1's.
 
-One more comparator is reported separately: **M5** (Milestone 5), SFT on measured per-item success rates, sampled from M1, in the style of CalibSFT.
+One more comparator is reported separately: **M5** (Milestone 5), SFT on measured per-item success rates, sampled from M1, in the style of CalibSFT. Its recipe is in the decision log (2026-10-28) and in `src/pac/calibsft.py`.
 
 **SFT.** LoRA rank 16 on the language model's attention and MLP projections, with target modules named explicitly so the vision encoder stays untouched. The learning rate is picked from {5e-5, 1e-4, 2e-4} on dev. The loss covers the answer letter and the JSON syntax; the confidence value is masked out of the loss, because the catalog has no true confidence to copy. Format validity is checked on dev before the protocol is frozen.
 
@@ -177,6 +182,7 @@ One more comparator is reported separately: **M5** (Milestone 5), SFT on measure
 - **Shared settings:** M3 and M4 share everything except the reward: starting checkpoint, prompts, data order, sampling seeds, steps and optimizer. M4 runs first.
 - **Logged every step:** reward, accuracy, invalid rate, stated confidence overall and for right and wrong answers, the stated-value histogram, the share of groups with no correctness signal, groups trained, gradient norm, time and memory.
 - **Before the long runs:** a check on a few prompts prints decoded rollouts with their rewards in both arms. It also confirms that sampling used the plain distribution, and that the training forward scores sampled tokens as the sampler did.
+- **Recipe v2 (Milestone 5):** the strata are not fixed. Every 50 steps the current policy scores every prompt by its probability p of the right letter, and a prompt is mixed if 1 − p⁸ − (1 − p)⁸ ≥ 0.2. Seeds 0, 1 and 2 set the schedule and the sampling draws. The check also confirms that every sampled answer opens with the prefix the scorer assumes, and that the scorer's p matches the sampler's.
 
 ## 7. Evaluation
 
@@ -194,7 +200,7 @@ One more comparator is reported separately: **M5** (Milestone 5), SFT on measure
 
 **Statistics.** Differences between methods get 95% intervals from a paired bootstrap over product families (10,000 resamples). For M2 and M2-logit, the Platt map and the temperature are refitted in every draw on a resample of the calibration families, so their intervals include the uncertainty of fitting the map. Variation across training seeds is reported separately.
 
-**Primary comparison, fixed before any training.** M4 against M2-logit on the held-out test, redacted text, clean subset, pooled over both attributes. M4 counts as better if the 95% interval of the difference in the Brier score, with invalid outputs counted as loss 1, lies below zero, and the lower bound of the accuracy difference (invalid outputs counted as wrong) is above −1 point. Secondary comparisons: M4 against M3 (the effect of the reward) and M4 against M2 (the Platt map on stated confidence). Until 2026-10-26 the primary comparison was M4 against M2; the decision log gives the reason for the change, made before any training.
+**Primary comparison, fixed before any training.** M4 against M2-logit on the held-out test, redacted text, clean subset, pooled over both attributes. M4 counts as better if the 95% interval of the difference in the Brier score, with invalid outputs counted as loss 1, lies below zero, and the lower bound of the accuracy difference (invalid outputs counted as wrong) is above −1 point. Secondary comparisons: M4 against M3 (the effect of the reward) and M4 against M2 (the Platt map on stated confidence). Until 2026-10-26 the primary comparison was M4 against M2; the decision log gives the reason for the change, made before any training. In Milestone 5 the same comparison is made with M4 recipe v2, averaged over three training seeds (decision log, 2026-10-28).
 
 All of these outcomes are reportable: RL wins under shift; the cheap fixes match it; every method degrades under shift; or confidence ignores the missing evidence.
 
@@ -205,7 +211,7 @@ All of these outcomes are reportable: RL wins under shift; the cheap fixes match
 - **Software on the pod:** `uv sync --group gpu` installs vLLM 0.32.0 with torch 2.13.0. Those torch wheels use CUDA 13, so the pod's host needs NVIDIA driver 580 or newer, and pods are created with that CUDA filter.
 - **Estimate:** 70–100 GPU-hours, about $55–75 including storage. Spending past $100 requires a review.
 - **Tracking:** spend is read from Runpod billing at each milestone and recorded in `docs/log.md`.
-- **Spent:** $26.52 through Milestone 4 (billing read 2026-10-28): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished, and about $4.78 for Milestone 4.
+- **Spent:** $47.23 through Milestone 5 (billing read 2026-10-29): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished; about $4.78 for Milestone 4; about $20.71 for Milestone 5.
 - **Local machine:** data preparation, tests and analysis.
 
 ## 9. Milestones

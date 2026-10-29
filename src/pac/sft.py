@@ -65,3 +65,16 @@ def completion_labels(token_ids: Sequence[int], offsets: Sequence[tuple[int, int
     """Training labels for the completion: each token's id, or -100 (ignored) where it overlaps the masked span."""
     start, end = masked
     return [-100 if s < end and e > start else t for t, (s, e) in zip(token_ids, offsets)]
+
+
+def calibrated_labels(token_ids: Sequence[int], offsets: Sequence[tuple[int, int]], confidence: tuple[int, int],
+                      correct: int) -> tuple[list[int], list[int]]:
+    """M5's training labels and confidence mask for one answer (src/pac/calibsft.py).
+
+    The confidence is learned on every answer; the rest of the answer, its letter and format, only
+    when it is right.
+    """
+    start, end = confidence
+    mask = [int(s < end and e > start) for s, e in offsets]
+    labels = [t if correct or m else -100 for t, m in zip(token_ids, mask)]
+    return labels, mask

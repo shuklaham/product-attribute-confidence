@@ -276,3 +276,39 @@ The numbers are in `reports/phase2.md` and the run log. This section is about wh
 - It now follows the model's own letter probability: rank correlation 0.87, against 0.51.
 
 Code: `scripts/train_grpo.py`, `scripts/report_phase2.py`. Results: `reports/phase2.md`.
+
+## 16. What Milestone 5 showed
+
+The numbers are in `reports/phase3.md` and the run log; this section is about why.
+
+**A proper scoring rule calibrates against the outcomes it sees.**
+- The Brier term pays most when the stated confidence equals the chance of being right, on the answers the model is trained on. If those answers contain no mistakes, the honest confidence for them is "certain", and the reward pushes every number toward 1.
+- That is what happened under recipe v2. As GRPO made the policy sure of its training prompts, groups with a wrong answer nearly vanished. M4 v2's written confidence rose to 0.98 or 0.99 on held-out answers that are right 90% of the time.
+- Recipe v1 kept a fixed pool of prompts that were hard for M1. Some stayed hard, so wrong answers, and with them the reason to lower confidence, never disappeared.
+
+**Why re-sorting could not help.**
+- Re-sorting finds the prompts the current policy is unsure of. But the policy grew sure everywhere, including on prompts it never trained on: the uncertain stratum shrank from 732 prompts to 4–20 in 300 steps.
+- A rule that draws half of each batch from that stratum then repeats a handful of prompts dozens of times.
+- Two lessons: a curriculum built from the policy's own uncertainty shrinks as the policy sharpens, and a batch rule needs a limit on repeats.
+- What would keep the reward honest is keeping mistakes in the training samples:
+  - a KL anchor to the starting model, so it stays unsure where it was unsure;
+  - a fixed share of genuinely hard prompts in every batch;
+  - or stopping once the signal is gone.
+
+**SFT on measured success rates gives the most informative written number.**
+- M5 learned from M1's own answers. Each answer's target mixes its prompt's success rate with whether that answer was right.
+- Its written confidence ranks answers better than any RL model's (AUROC 0.83), and it reacts to conflicting evidence: in the photo swap it falls from 0.92 to 0.72.
+- But the training mix was balanced across target values, so half the answers were wrong, and M5 learned a lower prior than the test items have. Its answers stated at 0–0.12 are right 52–60% of the time.
+- So the targets give resolution, while calibration depends on the mix.
+
+**An exploratory surprise: M5's letter probabilities.**
+- M5's own letter probabilities, with a temperature, have the lowest held-out Brier score of any method (0.071). They separate answers as well as M2-logit, are better calibrated (ECE 0.012), and come from a model 0.7 points more accurate.
+- One plausible reason, not yet tested: M5's training supervised the answer letter only on M1's own right answers, including on prompts where M1 was unsure. That is close to rejection-sampling fine-tuning.
+- This was found after the results were seen, and from one training run, so it is a hypothesis to test with seeds, not a result.
+
+**The photo swap.**
+- With the text redacted, every model answers mostly from the photo, as it should.
+- When the full text names a label the photo contradicts, training makes the models trust the text more: 43% of answers follow the text for M0, 82% for M5.
+- The confidence numbers that react to the conflict are the ones that carry information: M2-logit's letter probability (0.95 → 0.74) and M5's written confidence (0.92 → 0.72). The RL models' written numbers barely move.
+
+Code: `scripts/train_grpo.py` (recipe v2), `scripts/train_sft.py` (`--calibrated`), `src/pac/swap.py`, `scripts/report_phase3.py`. Results: `reports/phase3.md`.

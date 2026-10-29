@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Watches an unattended pod run from the laptop.
-# - Every 5 minutes (POLL seconds, if set) it copies /workspace/artifacts back.
+# - Every 5 minutes (POLL seconds, if set) it copies /workspace/artifacts back, and the pod's logs into _pod_logs.
 # - When the run has ended (/workspace/EXIT_STATUS exists), it makes a last copy, checks it against
 #   checksums made on the pod, and marks /workspace/COPIED, so the pod stops at once.
 # - Every step is a short SSH call that may fail and is retried, so a network drop or a sleeping
@@ -31,6 +31,8 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 60
     continue
   fi
+  # The pod's logs too (timings, exit codes, tracebacks); they are not checksummed, as they keep growing.
+  rsync -a --timeout=120 -e "$ssh_cmd" root@"$host":/workspace/logs/ "$dest/_pod_logs/" || true
   if [ -n "$status" ]; then
     if on_pod 'cd /workspace/artifacts && find . -type f -print0 | sort -z | xargs -0 sha256sum' > "$dest/.pod.sha256" &&
       (cd "$dest" && shasum -a 256 -c --quiet .pod.sha256) && on_pod 'touch /workspace/COPIED'; then
@@ -41,7 +43,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 60
     continue
   fi
-  echo "$(stamp) $(on_pod 'tail -n 1 /workspace/logs/phase2.log' 2> /dev/null)"
+  echo "$(stamp) $(on_pod 'tail -n 1 $(ls -t /workspace/logs/phase*.log | head -n 1)' 2> /dev/null)"
   sleep "${POLL:-300}"
 done
 echo "$(stamp) deadline passed"
