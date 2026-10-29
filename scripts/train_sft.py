@@ -11,7 +11,7 @@ encoder is untouched, and the script checks that.
 
 Usage:
     uv run --group gpu python -I scripts/train_sft.py <train.jsonl> <image_dir> <out_dir> --lr 1e-4
-        [--epochs 1] [--max-steps N] [--check] [--calibrated --init-adapter <dir>]
+        [--epochs 1] [--max-steps N] [--seed 0] [--check] [--calibrated --init-adapter <dir>]
 """
 
 import argparse
@@ -135,6 +135,7 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--accumulate", type=int, default=2)
     parser.add_argument("--max-steps", type=int, default=-1)
+    parser.add_argument("--seed", type=int, default=0, help="the data order and dropout draws")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--calibrated", action="store_true", help="M5: the train file holds CalibSFT targets")
     parser.add_argument("--init-adapter", type=Path, help="continue training this adapter (M5 starts from M1)")
@@ -179,7 +180,7 @@ def main() -> None:
         gradient_accumulation_steps=args.accumulate, learning_rate=args.lr, num_train_epochs=1,
         max_steps=args.max_steps,
         lr_scheduler_type="cosine", warmup_steps=0.03, bf16=True, logging_steps=10, save_strategy="no",
-        report_to="none", dataloader_num_workers=4, remove_unused_columns=False, seed=0,
+        report_to="none", dataloader_num_workers=4, remove_unused_columns=False, seed=args.seed,
         gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False},
     )
     trainer_class = calibrated_trainer(Trainer) if args.calibrated else Trainer
@@ -205,6 +206,7 @@ def main() -> None:
         "model": {"name": MODEL, "revision": REVISION},
         "lora": {"r": 16, "alpha": 32, "dropout": 0.05, "targets": LORA_TARGETS, "adapted_modules": len(adapted),
                  "trainable_parameters": trainable},
+        "seed": args.seed,
         "optimizer": {"lr": args.lr, "batch": args.batch, "accumulate": args.accumulate, "schedule": "cosine",
                       "warmup": 0.03, "max_steps": args.max_steps},
         "steps": result.global_step,
