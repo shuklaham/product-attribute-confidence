@@ -1,11 +1,12 @@
 # Product Attribute Confidence
 
-Does RL with a calibration reward make a vision-language model's stated confidence more trustworthy on product categories it never trained on, compared with cheap post-hoc calibration? The full design, decisions and milestones are in [docs/plan.md](docs/plan.md). How each part works, and why it is built that way, is in [docs/concepts.md](docs/concepts.md). The dated run log is [docs/log.md](docs/log.md).
+Does RL with a calibration reward make a vision-language model's stated confidence more trustworthy on product categories it never trained on, compared with cheap post-hoc calibration? The full design, decisions and milestones are in [docs/plan.md](docs/plan.md). How each part works, and why it is built that way, is in [docs/concepts.md](docs/concepts.md). The dated run log is [docs/log.md](docs/log.md). The whole study, its results and what they mean are summarized in [docs/writeup.md](docs/writeup.md).
 
-**Results so far:**
+**Results:**
 - **[reports/phase1.md](reports/phase1.md), SFT and the cheap fixes.** SFT lifts held-out accuracy, but the written confidence stays at 0.95. The model's own letter probabilities, temperature-scaled (M2-logit), are the strongest cheap fix.
-- **[reports/phase2.md](reports/phase2.md), RL.** RL with a calibration reward (M4) makes the written confidence the best calibrated of any method on held-out categories, and adds 2 points of accuracy. It still separates right from wrong answers less sharply than M2-logit, so by the rule fixed before training it does not count as better (Brier difference −0.006, 95% interval −0.014 to +0.0004).
+- **[reports/phase2.md](reports/phase2.md), RL, one seed.** RL with a calibration reward (M4) makes the written confidence the best calibrated of any method on held-out categories, and adds 2 points of accuracy. It still separates right from wrong answers less sharply than M2-logit, so by the rule fixed before training it does not count as better (Brier difference −0.006, 95% interval −0.014 to +0.0004). Phase 4 shows this was the best of three seeds.
 - **[reports/phase3.md](reports/phase3.md), three seeds, M5 and the photo swap.** RL recipe v2 failed: once the policy stopped making mistakes on its training prompts, the calibration reward inflated its confidence, and M4 v2 is worse than M2-logit (+0.017 Brier). SFT on measured success rates (M5) gives the best-ranking written confidence. Exploratory: M5's own letter probabilities have the best held-out Brier score of any method (0.071).
+- **[reports/phase4.md](reports/phase4.md), three seeds of the first RL recipe, and the evidence runs.** Over three seeds, the calibration reward does not beat M2-logit (Brier difference +0.004, 95% interval −0.003 to +0.010): Milestone 4's near-miss was the best of three seeds. M5's letter probabilities are not confirmed as better on two new seeds (−0.005, −0.011 to +0.002). With neither the photo nor the label in the text, accuracy falls to about half while the SFT and RL models still write 0.78–0.87.
 
 ## Setup
 
@@ -79,6 +80,8 @@ scripts/pod/watch.sh <host> <port> <known_hosts> <local_dir>
 # Phase-2 report, locally
 uv run python -I scripts/report_phase2.py
 ```
+
+Phases 3 and 4 follow the same pattern: `scripts/pod/phase3.sh` and `scripts/pod/phase4.sh` run on pods (their headers give the variables, such as `SEED`), and `scripts/report_phase3.py` and `scripts/report_phase4.py` make the reports locally.
 
 Each run writes `predictions.jsonl` and a run record (`run.json`: git commit, model revision, package versions, GPU, time) under `artifacts/`, which is gitignored. Only the aggregated tables in `reports/` are committed.
 

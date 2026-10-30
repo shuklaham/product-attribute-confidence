@@ -1,10 +1,12 @@
 """Build the photo-swap examples: held-out items with another product's photo (src/pac/swap.py).
 
 Writes both text conditions of 500 clean items per attribute, each with its donor's photo, and
-prints how many items had a donor at all. Runs locally.
+prints how many items had a donor at all. With a third path, it also writes the same items
+unswapped, for the photo-only and text-only runs on the same subset. Runs locally.
 
 Usage:
-    uv run python -I scripts/build_swaps.py data/processed/v1/heldout_test.jsonl data/processed/v1/swap_heldout.jsonl
+    uv run python -I scripts/build_swaps.py data/processed/v1/heldout_test.jsonl data/processed/v1/swap_heldout.jsonl \
+        [data/processed/v1/subset_heldout.jsonl]
 """
 
 import argparse
@@ -19,6 +21,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("examples", type=Path)
     parser.add_argument("out", type=Path)
+    parser.add_argument("subset_out", type=Path, nargs="?")
     args = parser.parse_args()
 
     with open(args.examples, encoding="utf-8") as f:
@@ -33,6 +36,11 @@ def main() -> None:
     with open(args.out, "w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row) + "\n")
+    if args.subset_out:
+        with open(args.subset_out, "w", encoding="utf-8") as f:
+            for pid, attribute in picked:
+                for condition in ("full", "redacted"):
+                    f.write(json.dumps(by_item[(pid, attribute, condition)]) + "\n")
 
     clean = {(e["product_id"], e["attribute"]) for e in examples if e["clean"]}
     for attribute in ("neckline", "sleeve_length"):

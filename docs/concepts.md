@@ -258,7 +258,7 @@ The numbers are in `reports/phase2.md` and the run log. This section is about wh
   - but its resolution is less than half of M2-logit's, 0.0084 against 0.0219.
 - So RL taught the written number to mean what it says: M4's 0.85 answers are right 84% of the time, on categories it never trained on. It did not teach the number to separate answers as sharply as the letter probability does. AUROC, which measures only the separating, shows the same thing: 0.79 against 0.86.
 
-**Why the written number separates less.** M4 writes 7 distinct values, and 0.98 on 75% of its answers. A number with 7 levels splits the answers into at most 7 groups, while the letter probability is continuous. The Brier reward does pay for finer distinctions, since a proper scoring rule rewards every distinction the model can really make. But learning them takes exploration. M1 wrote three values, and in 461 steps M4 got to seven.
+**Why the written number separates less.** M4 writes 7 distinct values, and 0.98 on 45% of its held-out answers with redacted text. A number with 7 levels splits the answers into at most 7 groups, while the letter probability is continuous. The Brier reward does pay for finer distinctions, since a proper scoring rule rewards every distinction the model can really make. But learning them takes exploration. M1 wrote three values, and in 461 steps M4 got to seven.
 
 **Why the training signal ran out.**
 - Each mixed prompt came up three times. As the policy learned those prompts, its 8 answers to each agreed more often.
@@ -312,3 +312,34 @@ The numbers are in `reports/phase3.md` and the run log; this section is about wh
 - The confidence numbers that react to the conflict are the ones that carry information: M2-logit's letter probability (0.95 → 0.74) and M5's written confidence (0.92 → 0.72). The RL models' written numbers barely move.
 
 Code: `scripts/train_grpo.py` (recipe v2), `scripts/train_sft.py` (`--calibrated`), `src/pac/swap.py`, `scripts/report_phase3.py`. Results: `reports/phase3.md`.
+
+## 17. Seeds, testing a hunch, and taking evidence away (Milestone 6)
+
+**Why one training run is not enough.**
+- The bootstrap interval answers one question: if the test families had been drawn differently, how much would the difference move? It treats the trained model as fixed.
+- But a training run is itself a draw. The data order, the dropout masks and, for GRPO, every sampled answer come from a seed, and a different seed gives a different model. With one run, the interval cannot show how much of the result belongs to that particular run.
+- So the primary statistic becomes the mean over three seeds, and every bootstrap draw resamples the test families once for all three. The interval then covers the test sampling of the mean; how far the seeds differ from each other is reported beside it.
+- Seed 0 of recipe v1 is the Milestone 4 run, whose result is known. It stays in the mean because three seeds were planned from the start, whatever seed 0 showed.
+
+**Why a hunch found in the results needs new runs to test it.**
+- After Milestone 5, several post-hoc variants of M5 were scored on the held-out test, and one (M5-logit) came out best. When you look at enough variants, one usually looks good by chance; choosing it after seeing the scores makes its interval too optimistic.
+- The cure is to fix the test before seeing new evidence: the same statistic and rule as the primary comparison, on two new training seeds that did not exist when the hunch was formed. Seed 0, which produced the hunch, is reported but left out.
+- What the new seeds can and cannot show: they test whether the gain belongs to the method rather than to one lucky training run. They are scored on the same held-out test set, so they cannot rule out that this set happens to favour the method. Only new test data could.
+
+**Why "the same seed" does not mean bit-identical training.** Before the runs, recipe v1 with seed 0 was replayed for 3 steps and compared with the Milestone 4 log.
+- Step 0 matched exactly: the same prompts, the same 64 sampled answers, the same rewards. Sampling is deterministic given the seed and the weights.
+- From step 1 on, the rewards differed in the fourth decimal. Step 0's gradient already differed in its seventh significant digit. Floating-point addition is not associative, so a sum taken in another order rounds differently, and neither GPU kernels nor a reorganized training loop promise the same order. After one update the weights differ very slightly, and occasionally that tips a sampled token.
+- That is why reproducibility is checked as "same up to numerical noise", and why seeds are compared as distributions rather than expected to repeat exactly.
+
+**Taking evidence away.** The photo swap asked whether confidence reacts when the evidence conflicts. The evidence runs ask whether it reacts when evidence is missing. Each model answers the same 1,000 held-out items five ways: photo with full text, photo with redacted text, the photo alone, the full text alone, and the redacted text alone.
+- A confidence that follows the evidence falls about as far as accuracy does, so mean confidence minus accuracy stays near zero in every mode.
+- A confidence that ignores the evidence stays put while accuracy falls, so the gap grows.
+- M2-logit and M5-logit are scored with the maps fitted on full evidence, as they would be in use. A map cannot know that evidence is missing; only the model's own probabilities can react to it.
+
+**What it showed.** The numbers are in `reports/phase4.md` and the run log.
+- **The single seed was the lucky one.** Milestone 4's M4 run, a near-win against M2-logit, was the best of three seeds; M4's Brier score ranged from 0.072 to 0.091. Its calibration depended on the run: the first seed spread its written values and reached an ECE of 0.015, the other two wrote 0.9 or more on over 90% of answers and landed at 0.042–0.045. What held in every seed is the comparison with M3: without the calibration term, the written number collapses toward one value.
+- **The hunch shrank, as hunches do.** M5-logit was singled out as the best of several variants on one run, so its first estimate (−0.007) was likely biased toward a win, the "winner's curse". On new seeds it points the same way but smaller (−0.005), and the interval crosses zero.
+- **Missing evidence exposes the written number.** With only the redacted text, the models are right about half the time. M1 still writes 0.87 and M4 0.78; M2-logit's letter probability falls to 0.60. M5's written number falls to 0.28, too far: its targets taught it to be unsure about hard items, and an item without its photo looks very hard.
+- **A degenerate refit.** In a few bootstrap draws (2 of 10,000 for M1, 25–71 for each M5 seed), the resampled calibration families held almost no wrong answers, and the refitted temperature ran to the edge of its search range. Those draws stay in the intervals, because the procedure was fixed, but they are counted and the intervals are also given without them. Such a draw raises that seed's Brier score by only about 0.002, so the intervals are the same to four decimals and no verdict changes.
+
+Code: `scripts/pod/phase4.sh`, `scripts/report_phase4.py`; the subset comes from `scripts/build_swaps.py`. Results: `reports/phase4.md`.

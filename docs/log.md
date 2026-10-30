@@ -331,7 +331,7 @@ Milestone 2 is complete.
   - M3's written confidence is overconfident: its 0.8 answers are right 63% of the time.
 - **The written number now follows the model's own letter probability.** Rank correlation 0.87 for M4, 0.62 for M3 and 0.51 for M1 (exploratory).
 - **It now reacts to missing evidence, partly.** Redacting the text lowers M4's confidence by 4.0 points while its accuracy falls 5.8. For M1 the numbers were 0.5 and 7.2.
-- **M4 writes few values.** 7 distinct; 0.98 on 75% of answers, 0.95 on 11%, below 0.9 on 12%. A number with so few levels cannot order answers as finely as a probability, which likely explains its lower AUROC.
+- **M4 writes few values.** 7 distinct; 0.98 on 45% of answers, 0.95 on 22%, below 0.9 on 28%. (Corrected 2026-10-29: this line first gave 75%, 11% and 12%, which pool both test sets and both text conditions.) A number with so few levels cannot order answers as finely as a probability, which likely explains its lower AUROC.
 - **Thresholds still do not transfer.** M4's frozen thresholds auto-fill 99.8% of held-out answers at 8.6% error (M2-logit: 10.5%), still above the 5% target.
 - **On the seen test the methods tie on Brier:** M4 minus M2-logit is −0.0007 (−0.0036 to +0.0021).
 - **Training used up its own signal.**
@@ -406,3 +406,52 @@ Milestone 4 is complete.
 - Write up the study as it stands: the pre-registered verdicts for v1 and v2, the failure mechanism of v2, and M5's results.
 - Optionally, a pre-registered follow-up of the exploratory result: M5-logit against M2-logit with three SFT seeds, about $2–3.
 - Optionally, an RL recipe that keeps wrong answers in training: a KL anchor to M1, a fixed share of hard prompts in every batch, or stopping when the signal runs out.
+
+## 2026-10-29: Milestone 6, three seeds for recipe v1, M5 seeds and the evidence runs
+
+**Decisions** (author, before any run; reasons in the plan's decision log):
+- seeds 1 and 2 of recipe v1 for M4 and M3, and of M5; the test of M5-logit leaves out seed 0, which suggested it;
+- photo-only and text-only runs on the photo-swap subset;
+- PR #5 was merged into main locally.
+
+**Prepared locally**
+- `train_sft.py --seed`; seed 0 is the Milestone 5 run.
+- The photo-swap subset unswapped (`subset_heldout.jsonl`, 2,000 examples: the same 1,000 items in both text conditions).
+- `scripts/pod/phase4.sh`, with plan-only tests of every command.
+
+**Pre-flight on a live pod**
+- Recipe v1 with seed 0 for 3 steps, against the Milestone 4 log:
+  - step 0 is identical: every sampled answer, so the reward, accuracy, stated values and signal share;
+  - at steps 1 and 2, accuracy and the signal share are identical and the rewards differ by at most 0.00013. That is floating-point rounding: step 0's gradient already differs in its seventh significant digit (norm 1.9926111 against 1.9926106), and the first update carries the difference forward.
+- The logged learning rate is one warm-up step lower. The Milestone 4 log recorded the next step's rate, which `4bc84f1` fixed; the update itself did not change.
+
+**Ran**
+- Two A40 pods (Secure Cloud; CA-MTL-1 and EU-SE-1), at commit `b44a038`. Each runs `scripts/pod/phase4.sh` for one seed: M4 v1, then M5, then M3 v1, each evaluated on the five splits and the swap set as soon as it is trained. Then pod A (seed 1) runs the evidence runs for M0 and M1, and pod B (seed 2) for M4 and M5.
+- Launched at 05:17 UTC. Each pod stops itself when its run ends, when nothing changes for 40 minutes, or after 12 hours. Two laptop watchers copy the outputs and the pods' logs.
+- Expected: about 8.5 hours and $10.40 (two pods at $0.59/hr).
+
+**Finished.** Seed 2's pod finished at 13:27 UTC and seed 1's at 13:30; every step exited 0. The laptop slept through part of the run, so the watchers' copies paused, hit a few connection resets and resumed. Both copied and verified their outputs at 13:54, inside the pods' 30-minute wait, and each pod then stopped itself. Both pods were deleted.
+
+**Cost:** per-pod billing, read the next day: $5.26 for each pod, so Milestone 6 cost $10.52 (estimate $10.40). The project total is $58.34 ($57.36 GPU, $0.98 disk). It rose $11.11 since the last reading; the other $0.59 is earlier usage that had not posted when that total was read.
+
+**Findings** (held-out test, redacted text, clean items, both attributes pooled; intervals are 95% from the paired family bootstrap, 10,000 draws; full tables in `reports/phase4.md`)
+- **Primary comparison: M4 v1 does not count as better than M2-logit over three seeds.**
+  - Mean Brier difference +0.0042 (−0.0031 to +0.0104).
+  - Per seed: −0.0061 (seed 0, the Milestone 4 run), +0.0131 and +0.0057. Milestone 4's near-miss came from the best of the three seeds.
+  - Accuracy +0.9 points (+0.3 to +1.5).
+- **The test of M5-logit: not confirmed.** On the two new seeds the mean Brier difference is −0.0047 (−0.0111 to +0.0017); the interval crosses zero.
+  - All three seeds point the same way: −0.0070, −0.0034 and −0.0061.
+  - M5-logit's ECE is 0.012–0.019 in every seed, against 0.040 for M2-logit.
+- **What holds across seeds:**
+  - The calibration reward beats the correctness reward: M4 v1 minus M3 v1 Brier −0.0120 (−0.0151 to −0.0091), accuracy +0.4 points (+0.1 to +0.8).
+  - M4's written confidence ranks answers worse than M2-logit's letter probability: AUROC −0.065 (−0.083 to −0.045).
+  - M5's written confidence ranks answers the same way in every seed: AUROC 0.833–0.836, the best of any written confidence. Its ECE is 0.060–0.076.
+- **RL varies a lot between seeds.**
+  - M4 v1's Brier score ranges 0.072–0.091 and its ECE 0.015–0.045. Seed 0 spread its written values more (28% below 0.9, against 5–9% for seeds 1 and 2).
+  - M3 v1 seeds 1 and 2 write only two values, 0.98 on 93–96% of answers (AUROC 0.52–0.54).
+  - The spread of M4 v1's Brier score between seeds (0.019) is three times the difference Milestone 4 measured against M2-logit (0.006).
+- **Evidence runs** (1,000 clean held-out items):
+  - The photo alone gives the same accuracy and confidence as the photo with redacted text, for every model (within 1 point), so the redaction leaves little the photo does not already say.
+  - The full text alone gets 91–92% right, close to photo and full text (94–96%).
+  - With the redacted text alone, accuracy falls to 51–54%. Written confidence stays high for M1 (0.87), M0 (0.80) and M4 (0.78), and falls too far for M5 (0.28). M2-logit's letter probability comes closest (0.60).
+- **Photo swap** (new seeds): M4 v1's written confidence falls 4–5 points when the photo contradicts the text; M3 v1's does not move (0.98). M5's falls 20–25 points in every seed, as in Milestone 5.
