@@ -1,13 +1,13 @@
 # Project plan: calibrated confidence under category shift
 
-Status: Milestone 5 (RL over three seeds, M5, the photo swap) complete; results in `reports/phase1.md`, `reports/phase2.md` and `reports/phase3.md`. Milestone 6 (seeds 1 and 2 of recipe v1 and of M5, evidence ablations) is pre-registered in the decision log (2026-10-29).
-- **Milestone 4, one seed (recipe v1):** M4 does not count as better than M2-logit on the held-out test with redacted text. Its Brier score is 0.072 against 0.078, but the interval reaches +0.0004. Its written confidence is the best calibrated of any method (ECE 0.015).
-- **Milestone 5, three seeds (recipe v2):** M4 v2 is worse than M2-logit (mean Brier difference +0.017, +0.009 to +0.025). Re-sorting the prompts by the policy's own uncertainty could not stop that uncertainty from vanishing. With almost no wrong answers left in training, the Brier reward inflated the written confidence.
-- **M5 (CalibSFT-style SFT):** its written confidence ranks answers best among written confidences (AUROC 0.83) but is miscalibrated (Brier 0.095).
-- **Exploratory:** M5's own temperature-scaled letter probabilities have the best held-out Brier score of any method (0.071, against 0.078). That is a hypothesis for a pre-registered follow-up.
-- **Photo swap:** only M2-logit's letter probability and M5's written confidence drop clearly when the photo contradicts the text.
+Status: Milestone 6 (three seeds of recipe v1 and of M5, evidence runs) complete; results in `reports/phase1.md` to `reports/phase4.md`, and the study is summarized in `docs/writeup.md`.
+- **Primary comparison, recipe v1 over three seeds (Milestone 6):** M4 does not count as better than M2-logit on the held-out test with redacted text: mean Brier difference +0.004 (−0.003 to +0.010). Milestone 4's near-miss (−0.006) was the best of the three seeds. Across seeds, M4 beats M3 (Brier −0.012) and M1 (+0.9 points of accuracy), and ranks answers worse than M2-logit (AUROC −0.065).
+- **Recipe v2 over three seeds (Milestone 5):** M4 v2 is worse than M2-logit (+0.017, +0.009 to +0.025). With almost no wrong answers left in training, the Brier reward inflated the written confidence.
+- **M5 (CalibSFT-style SFT):** its written confidence ranks answers best among written confidences in every seed (AUROC 0.833–0.836) but is miscalibrated (Brier 0.095–0.105).
+- **The test of M5-logit (Milestone 6):** not confirmed. On two new seeds the mean Brier difference against M2-logit is −0.005 (−0.011 to +0.002), though M5-logit has the lowest Brier score of any method in every seed.
+- **Evidence:** with neither the photo nor the label in the text, accuracy falls to about 52%, while the written confidence of the SFT and RL models stays at 0.78–0.87. M2-logit's letter probability falls to 0.60, closest to the accuracy. When the photo contradicts the text, M5's written confidence and M2-logit's letter probability fall about 20 points, M4's about 5.
 
-Last updated 2026-10-29.
+Last updated 2026-10-30.
 
 ## 1. Question
 
@@ -215,7 +215,7 @@ All of these outcomes are reportable: RL wins under shift; the cheap fixes match
 - **Software on the pod:** `uv sync --group gpu` installs vLLM 0.32.0 with torch 2.13.0. Those torch wheels use CUDA 13, so the pod's host needs NVIDIA driver 580 or newer, and pods are created with that CUDA filter.
 - **Estimate:** 70–100 GPU-hours, about $55–75 including storage. Spending past $100 requires a review.
 - **Tracking:** spend is read from Runpod billing at each milestone and recorded in `docs/log.md`.
-- **Spent:** $47.23 through Milestone 5 (billing read 2026-10-29): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished; about $4.78 for Milestone 4; about $20.71 for Milestone 5.
+- **Spent:** $58.34 through Milestone 6 (billing read 2026-10-30): $21.74 through Milestone 3, of which about $19.50 was a pod left idle after its work finished; about $4.78 for Milestone 4; $20.76 for Milestone 5 and $10.52 for Milestone 6 (per-pod billing). The other $0.54 is usage that posted after earlier readings.
 - **Local machine:** data preparation, tests and analysis.
 
 ## 9. Milestones

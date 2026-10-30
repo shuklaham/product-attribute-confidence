@@ -26,6 +26,7 @@ Usage:
 import argparse
 import json
 import math
+import warnings
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -82,19 +83,29 @@ def color(method: str) -> str:
     return COLORS["M2-logit"] if method == "M2-logit" else COLORS[method.split()[0].removesuffix("-logit")]
 
 
-def bootstrap(cal: dict, test: dict, resamples: int, seed: int = 0) -> dict:
+def bootstrap(cal: dict, test: dict, resamples: int, seed: int = 0) -> tuple[dict, Counter]:
     """Paired family bootstrap on one test set; every map is refitted every draw.
 
     cal maps M1's run and each M5 seed's run to attribute -> arrays of its map-fitting records, and
     test maps every method's run to attribute -> arrays of its records; all runs hold the same items
     in the same order.
+
+    A temperature refitted on a resample with almost no wrong answers runs to the edge of its search
+    range. Such draws stay in the intervals, as the procedure was fixed, but are counted per run, and
+    each interval is also given without them.
     """
     cal_index, n_cal = family_index(cal["m1"])
     test_index, n_test = family_index(test["m1"])
+    at_edge = set()  # the runs whose temperature hit a search bound in the current draw
 
-    def temperature(a, rows):
+    def temperature(a, rows, run):
         rows = rows[a["has_letters"][rows]]
-        return fit_temperature(a["letters"][rows], a["answer"][rows], iterations=40).t
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            t = fit_temperature(a["letters"][rows], a["answer"][rows], iterations=40).t
+        if caught:
+            at_edge.add(run)
+        return t
 
     def statistics(cal_counts, test_counts):
         q, c = defaultdict(list), defaultdict(list)
@@ -103,12 +114,13 @@ def bootstrap(cal: dict, test: dict, resamples: int, seed: int = 0) -> dict:
             test_rows = np.repeat(np.arange(len(test_index[k])), test_counts[test_index[k]])
             fit = cal["m1"][k]
             platt = fit_platt(fit["stated"][cal_rows], fit["correct"][cal_rows])
-            m2, m2_logit = mapped(test["m1"][k], test_rows, platt, temperature(fit, cal_rows))
+            m2, m2_logit = mapped(test["m1"][k], test_rows, platt, temperature(fit, cal_rows, "m1"))
             fitted = {"M2": m2, "M2-logit": m2_logit}
             for s in SEEDS:
                 run = source("m5", s)
                 # Only the letter half is used: M5's letter probability with this seed's own temperature.
-                fitted[f"M5-logit s{s}"] = mapped(test[run][k], test_rows, platt, temperature(cal[run][k], cal_rows))[1]
+                t5 = temperature(cal[run][k], cal_rows, run)
+                fitted[f"M5-logit s{s}"] = mapped(test[run][k], test_rows, platt, t5)[1]
             for name, (run, key, _) in METHODS.items():
                 q[name].append(test[run][k]["stated"][test_rows] if key == "stated" else fitted[name])
                 c[name].append(test[run][k]["correct"][test_rows])
@@ -140,22 +152,29 @@ def bootstrap(cal: dict, test: dict, resamples: int, seed: int = 0) -> dict:
     point = statistics(np.ones(n_cal, dtype=int), np.ones(n_test, dtype=int))
     rng = np.random.default_rng(seed)
     draws = {key: [] for key in point}
+    edges, clean = Counter(), []
     for _ in range(resamples):
+        at_edge.clear()
         values = statistics(np.bincount(rng.integers(0, n_cal, n_cal), minlength=n_cal),
                             np.bincount(rng.integers(0, n_test, n_test), minlength=n_test))
         for key, value in values.items():
             draws[key].append(value)
+        edges.update(at_edge)
+        clean.append(not at_edge)
+    clean = np.array(clean)
     out = {}
     for key, values in draws.items():
         values = np.array(values)
         low, high = np.nanquantile(values, [0.025, 0.975])
-        out[key] = (point[key], float(low), float(high), int(np.isnan(values).sum()))
-    return out
+        clean_low, clean_high = np.nanquantile(values[clean], [0.025, 0.975])
+        out[key] = (point[key], float(low), float(high), int(np.isnan(values).sum()), float(clean_low),
+                    float(clean_high))
+    return out, edges
 
 
 def verdict(intervals: dict, brier_key: str, accuracy_key: str) -> tuple[list[str], bool]:
     """The table rows of a pre-registered comparison and whether it counts as better."""
-    brier, accuracy = intervals[brier_key], intervals[accuracy_key]
+    brier, accuracy = intervals[brier_key][:3], intervals[accuracy_key][:3]
     brier_met, accuracy_met = brier[2] < 0, accuracy[1] > -0.01
     rows = ["| Difference | Estimate | 95% interval | Criterion | Met |", "|---|---:|---|---|---|",
             (f"| {brier_key} | {brier[0]:+.4f} | {brier[1]:+.4f} to {brier[2]:+.4f} | interval below 0 | "
@@ -305,7 +324,7 @@ def main() -> None:
         run = json.loads((art / source("m5", s) / "run.json").read_text(encoding="utf-8"))
         lines.append(f"| {s} | {run['steps']} | {run['elapsed_seconds'] / 60:.0f} | {run['final_train_loss']:.4f} |")
 
-    intervals = {}
+    intervals, edges = {}, {}
     for split in SPLITS:
         cal = {run: {} for run in fitted}
         test = {run: {} for run in runs}
@@ -320,7 +339,7 @@ def main() -> None:
                 cal[run][attribute] = arrays([cal_by_id[run][r["example_id"]] for r in cal_records])
             for run in test:
                 test[run][attribute] = arrays([by_id[run][r["example_id"]] for r in test_records])
-        intervals[split] = bootstrap(cal, test, args.resamples)
+        intervals[split], edges[split] = bootstrap(cal, test, args.resamples)
 
     rows, better = verdict(intervals["heldout_test"], PRIMARY_BRIER, PRIMARY_ACCURACY)
     lines += ["", "## Primary comparison (fixed before any Milestone 6 run)", "",
@@ -335,7 +354,13 @@ def main() -> None:
                "tested here on two new training runs: the mean over seeds 1 and 2 of the M5-logit minus M2-logit "
                "difference, with the same rule. Seed 0 is reported below but left out of the test. The test set is the "
                "one the hypothesis was found on."), "", *rows, "",
-              f"**Verdict: M5-logit {'counts' if better else 'does not count'} as better than M2-logit.**"]
+              f"**Verdict: M5-logit {'counts' if better else 'does not count'} as better than M2-logit.**", "",
+              ("Sensitivity: in some draws a refitted temperature runs to the edge of its search range, because the "
+               "resampled map-fitting families hold almost no wrong answers. Draws per run: "
+               + (", ".join(f"{run} {n:,}" for run, n in sorted(edges["heldout_test"].items())) or "none") + ". "
+               "Without those draws, the Brier intervals are "
+               + "; ".join(f"{key.split(',')[1].strip()}: {intervals['heldout_test'][key][4]:+.4f} to "
+                           f"{intervals['heldout_test'][key][5]:+.4f}" for key in (PRIMARY_BRIER, TEST_BRIER)) + ".")]
 
     lines += ["", "## Other comparisons, redacted text, clean items", "",
               (f"Paired family bootstrap ({args.resamples:,} draws), the same draws for every model; every draw refits "
@@ -343,7 +368,7 @@ def main() -> None:
                "first method."), "",
               "| Split | Difference | Estimate | 95% interval | Undefined draws |", "|---|---|---:|---|---:|"]
     for split in SPLITS:
-        for key, (estimate, low, high, undefined) in intervals[split].items():
+        for key, (estimate, low, high, undefined, *_) in intervals[split].items():
             lines.append(f"| {SPLITS[split]} | {key} | {estimate:+.4f} | {low:+.4f} to {high:+.4f} | {undefined} |")
 
     lines += ["", "## Results, held-out and seen test, redacted text, clean items", "",

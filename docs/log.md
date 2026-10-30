@@ -429,3 +429,29 @@ Milestone 4 is complete.
 - Two A40 pods (Secure Cloud; CA-MTL-1 and EU-SE-1), at commit `b44a038`. Each runs `scripts/pod/phase4.sh` for one seed: M4 v1, then M5, then M3 v1, each evaluated on the five splits and the swap set as soon as it is trained. Then pod A (seed 1) runs the evidence runs for M0 and M1, and pod B (seed 2) for M4 and M5.
 - Launched at 05:17 UTC. Each pod stops itself when its run ends, when nothing changes for 40 minutes, or after 12 hours. Two laptop watchers copy the outputs and the pods' logs.
 - Expected: about 8.5 hours and $10.40 (two pods at $0.59/hr).
+
+**Finished.** Seed 2's pod finished at 13:27 UTC and seed 1's at 13:30; every step exited 0. The laptop slept through part of the run, so the watchers' copies paused, hit a few connection resets and resumed. Both copied and verified their outputs at 13:54, inside the pods' 30-minute wait, and each pod then stopped itself. Both pods were deleted.
+
+**Cost:** per-pod billing, read the next day: $5.26 for each pod, so Milestone 6 cost $10.52 (estimate $10.40). The project total is $58.34 ($57.36 GPU, $0.98 disk). It rose $11.11 since the last reading; the other $0.59 is earlier usage that had not posted when that total was read.
+
+**Findings** (held-out test, redacted text, clean items, both attributes pooled; intervals are 95% from the paired family bootstrap, 10,000 draws; full tables in `reports/phase4.md`)
+- **Primary comparison: M4 v1 does not count as better than M2-logit over three seeds.**
+  - Mean Brier difference +0.0042 (−0.0031 to +0.0104).
+  - Per seed: −0.0061 (seed 0, the Milestone 4 run), +0.0131 and +0.0057. Milestone 4's near-miss came from the best of the three seeds.
+  - Accuracy +0.9 points (+0.3 to +1.5).
+- **The test of M5-logit: not confirmed.** On the two new seeds the mean Brier difference is −0.0047 (−0.0111 to +0.0017); the interval crosses zero.
+  - All three seeds point the same way: −0.0070, −0.0034 and −0.0061.
+  - M5-logit's ECE is 0.012–0.019 in every seed, against 0.040 for M2-logit.
+- **What holds across seeds:**
+  - The calibration reward beats the correctness reward: M4 v1 minus M3 v1 Brier −0.0120 (−0.0151 to −0.0091), accuracy +0.4 points (+0.1 to +0.8).
+  - M4's written confidence ranks answers worse than M2-logit's letter probability: AUROC −0.065 (−0.083 to −0.045).
+  - M5's written confidence ranks answers the same way in every seed: AUROC 0.833–0.836, the best of any written confidence. Its ECE is 0.060–0.076.
+- **RL varies a lot between seeds.**
+  - M4 v1's Brier score ranges 0.072–0.091 and its ECE 0.015–0.045. Seed 0 spread its written values more (28% below 0.9, against 5–9% for seeds 1 and 2).
+  - M3 v1 seeds 1 and 2 write only two values, 0.98 on 93–96% of answers (AUROC 0.52–0.54).
+  - The spread of M4 v1's Brier score between seeds (0.019) is three times the difference Milestone 4 measured against M2-logit (0.006).
+- **Evidence runs** (1,000 clean held-out items):
+  - The photo alone gives the same accuracy and confidence as the photo with redacted text, for every model (within 1 point), so the redaction leaves little the photo does not already say.
+  - The full text alone gets 91–92% right, close to photo and full text (94–96%).
+  - With the redacted text alone, accuracy falls to 51–54%. Written confidence stays high for M1 (0.87), M0 (0.80) and M4 (0.78), and falls too far for M5 (0.28). M2-logit's letter probability comes closest (0.60).
+- **Photo swap** (new seeds): M4 v1's written confidence falls 4–5 points when the photo contradicts the text; M3 v1's does not move (0.98). M5's falls 20–25 points in every seed, as in Milestone 5.
